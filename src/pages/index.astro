@@ -556,7 +556,7 @@ body[data-role="editor"] .admin-only{display:none!important}
 <body data-role={role}>
 
 <!-- Slow Network Overlay -->
-<div class="slow-overlay" id="slowOverlay"><div class="slow-box"><div class="slow-spinner"></div><div class="slow-text">Menunggu koneksi...</div><div class="slow-sub">Jaringan lambat, mohon tunggu</div></div></div>
+<div class="slow-overlay" id="slowOverlay"><div class="slow-box"><div class="slow-spinner" id="slowSpinner"></div><div class="slow-text" id="slowText">Menunggu koneksi...</div><div class="slow-sub" id="slowSub">Jaringan lambat, mohon tunggu</div><button class="btn btn-secondary btn-sm" id="slowRetryBtn" style="display:none;margin-top:14px" onclick="_retryFromOverlay()">Ulangi</button></div></div>
 
 <!-- Toast Container -->
 <div class="toast-container" id="toastContainer"></div>
@@ -1622,30 +1622,48 @@ function resolveFieldPath(id) {
 var _incrementBusy = false;
 var _incrementQueue = [];
 var _slowTimer = null;
-var _connectionLost = false;
 
-function showSlowOverlay() { document.getElementById('slowOverlay').classList.add('visible'); }
-function hideSlowOverlay() { document.getElementById('slowOverlay').classList.remove('visible'); }
+function _showOverlayLoading() {
+  document.getElementById('slowSpinner').style.display = '';
+  document.getElementById('slowText').textContent = 'Menunggu koneksi...';
+  document.getElementById('slowSub').textContent = 'Jaringan lambat, mohon tunggu';
+  document.getElementById('slowRetryBtn').style.display = 'none';
+  document.getElementById('slowOverlay').classList.add('visible');
+}
+
+function _showOverlayFailed() {
+  document.getElementById('slowSpinner').style.display = 'none';
+  document.getElementById('slowText').textContent = 'Data Gagal Terkirim';
+  document.getElementById('slowSub').textContent = 'Periksa koneksi internet Anda';
+  document.getElementById('slowRetryBtn').style.display = '';
+  document.getElementById('slowOverlay').classList.add('visible');
+}
+
+function _hideOverlay() {
+  document.getElementById('slowOverlay').classList.remove('visible');
+}
 
 function _softRefresh() {
   loadAllStates().then(function() {
     return loadSettings();
   }).then(function() {
-    renderCurrentPage();
+    if (currentPage === 'input' && currentView !== 'all') {
+      var state = getState();
+      if (state) syncInputDom(state);
+    } else {
+      renderCurrentPage();
+    }
   });
 }
 
-function _retryIncrement(job, attempt) {
-  var delay = Math.min(2000 * Math.pow(2, attempt), 15000);
-  var sub = document.querySelector('.slow-sub');
-  if (sub) sub.textContent = 'Mencoba ulang dalam ' + Math.round(delay/1000) + ' detik...';
-  setTimeout(function() {
-    if (sub) sub.textContent = 'Mencoba ulang...';
-    _doIncrement(job, attempt + 1);
-  }, delay);
+function _retryFromOverlay() {
+  _incrementQueue = [];
+  _incrementBusy = false;
+  _hideOverlay();
+  _softRefresh();
 }
 
-function _doIncrement(job, attempt) {
+function _doIncrement(job) {
   var controller = new AbortController();
   var timeout = setTimeout(function() { controller.abort(); }, 10000);
   fetch('/api/increment', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({day:job.day, path:job.path, delta:job.delta}), signal:controller.signal})
@@ -1660,33 +1678,26 @@ function _doIncrement(job, attempt) {
         if (d.capped) toast('Sudah mencapai batas total target', 'info');
         setTimeout(function() { _skipNextCollect = false; }, 50);
       }
-      _onIncrementDone();
+      clearTimeout(_slowTimer);
+      _hideOverlay();
+      _incrementBusy = false;
+      _processIncrementQueue();
     })
     .catch(function() {
-      _connectionLost = true;
-      showSlowOverlay();
-      var sub = document.querySelector('.slow-sub');
-      if (sub) sub.textContent = 'Tidak ada koneksi, menunggu...';
-      _retryIncrement(job, attempt);
+      clearTimeout(timeout);
+      clearTimeout(_slowTimer);
+      _incrementQueue = [];
+      _showOverlayFailed();
+      _incrementBusy = false;
     });
-}
-
-function _onIncrementDone() {
-  clearTimeout(_slowTimer);
-  var wasLost = _connectionLost;
-  _connectionLost = false;
-  hideSlowOverlay();
-  _incrementBusy = false;
-  if (wasLost) _softRefresh();
-  _processIncrementQueue();
 }
 
 function _processIncrementQueue() {
   if (_incrementBusy || _incrementQueue.length === 0) return;
   _incrementBusy = true;
   var job = _incrementQueue.shift();
-  _slowTimer = setTimeout(showSlowOverlay, 1000);
-  _doIncrement(job, 0);
+  _slowTimer = setTimeout(_showOverlayLoading, 1000);
+  _doIncrement(job);
 }
 
 function numStep(id, dir) {
