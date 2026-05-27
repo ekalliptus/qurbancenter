@@ -2452,12 +2452,19 @@ function initSupabaseRealtime() {
             var result = migrateState(data || defaultDayState());
             dayStates[dayNum] = result.state;
             if (currentPage === 'pengaturan') return;
-            if (currentPage === 'input' && String(currentView) === String(dayNum)) {
+            if (currentView === 'all') {
+              renderCurrentPage();
+            } else if (currentPage === 'input' && String(currentView) === String(dayNum)) {
               syncInputDom(result.state);
             } else {
               renderCurrentPage();
             }
           }).catch(function() {});
+          return;
+        }
+
+        if (key === 'settings' || key === 'day2-settings') {
+          loadSettings().then(function() { renderCurrentPage(); });
           return;
         }
 
