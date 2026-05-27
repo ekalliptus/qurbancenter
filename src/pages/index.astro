@@ -1013,16 +1013,26 @@ function renderCurrentPage() {
   setupPageListeners();
 }
 
-var _listenersAttached = false;
 var _skipNextCollect = false;
+var _inputHandler = null;
+var _changeHandler = null;
+function _detachInputListeners() {
+  var pc = document.getElementById('pageContent');
+  if (pc && _inputHandler) { pc.removeEventListener('input', _inputHandler); pc.removeEventListener('change', _changeHandler); }
+  _inputHandler = null; _changeHandler = null;
+}
 function setupPageListeners() {
   var pc = document.getElementById('pageContent');
-  if (currentPage === 'input' && currentView !== 'all' && !_listenersAttached) {
-    _listenersAttached = true;
-    pc.addEventListener('input', function(e) { if (_skipNextCollect) return; if (e.target.classList.contains('form-control')) { collectCurrentFormData(); queueDaySave(currentView); } });
-    pc.addEventListener('change', function(e) { if (_skipNextCollect) return; if (e.target.classList.contains('form-control')) { collectCurrentFormData(); queueDaySave(currentView); } });
+  if (currentPage === 'input' && currentView !== 'all') {
+    if (!_inputHandler) {
+      _inputHandler = function(e) { if (_skipNextCollect) return; if (e.target.classList.contains('form-control')) { collectCurrentFormData(); queueDaySave(currentView); } };
+      _changeHandler = function(e) { if (_skipNextCollect) return; if (e.target.classList.contains('form-control')) { collectCurrentFormData(); queueDaySave(currentView); } };
+      pc.addEventListener('input', _inputHandler);
+      pc.addEventListener('change', _changeHandler);
+    }
+  } else {
+    _detachInputListeners();
   }
-  if (currentPage !== 'input') _listenersAttached = false;
   var searchEl = document.getElementById('searchKalet');
   var filterEl = document.getElementById('filterKaletStatus');
   if (searchEl) searchEl.addEventListener('input', filterKaletGrid);
@@ -1696,6 +1706,7 @@ function _processIncrementQueue() {
   if (_incrementBusy || _incrementQueue.length === 0) return;
   _incrementBusy = true;
   var job = _incrementQueue.shift();
+  if (_slowTimer) clearTimeout(_slowTimer);
   _slowTimer = setTimeout(_showOverlayLoading, 1000);
   _doIncrement(job);
 }
@@ -2224,7 +2235,7 @@ function mwDistribusi(state) {
   var dk=dkLok.filter(function(x){return x.status==='selesai'}).length;
   var tkecil=dkLok.length;
   var dkk=state.distribusiKarkas?(state.distribusiKarkas.selesaiDomba||0)+(state.distribusiKarkas.selesaiSapi||0):0;
-  var tkarkas=state.distribusiKarkas?state.distribusiKarkas.total||0:0;
+  var tkarkas=state.distribusiKarkas?(state.distribusiKarkas.domba||0)+(state.distribusiKarkas.sapi||0):0;
   return '<div class="card" style="margin-bottom:24px"><div style="font-weight:700;font-size:15px;margin-bottom:16px">Distribusi</div><div class="mon-stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">'+
     monStatCard('green','Dist. Kecil',dk+'/'+tkecil,pct(dk,tkecil||1)+'%')+
     monStatCard('amber','Dist. Karkas',dkk+'/'+tkarkas,pct(dkk,tkarkas||1)+'%')+
@@ -2408,12 +2419,16 @@ var supabaseClient = null;
 var realtimeChannel = null;
 
 function initSupabaseRealtime() {
+  if (realtimeChannel) {
+    realtimeChannel.unsubscribe();
+    realtimeChannel = null;
+  }
   if (typeof supabase === 'undefined' || !supabase.createClient) {
     console.warn('[RT] Supabase JS not loaded, falling back to polling');
     startPollingFallback();
     return;
   }
-  supabaseClient = supabase.createClient(
+  if (!supabaseClient) supabaseClient = supabase.createClient(
     'https://weuyigniellckkiyxxlz.supabase.co',
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndldXlpZ25pZWxsY2traXl4eGx6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4NTUxNTUsImV4cCI6MjA5NTQzMTE1NX0.y13osUe66LEJBti0Exaid-59VXdUQ2mCwbBGqB21TEo'
   );
@@ -2455,7 +2470,10 @@ function initSupabaseRealtime() {
             if (currentView === 'all') {
               renderCurrentPage();
             } else if (currentPage === 'input' && String(currentView) === String(dayNum)) {
-              syncInputDom(result.state);
+              var oldLokLen = (dayStates[dayNum] && dayStates[dayNum].distribusiKecil && dayStates[dayNum].distribusiKecil.lokasi) ? dayStates[dayNum].distribusiKecil.lokasi.length : 0;
+              var newLokLen = (result.state.distribusiKecil && result.state.distribusiKecil.lokasi) ? result.state.distribusiKecil.lokasi.length : 0;
+              dayStates[dayNum] = result.state;
+              if (oldLokLen !== newLokLen) { renderCurrentPage(); } else { syncInputDom(result.state); }
             } else {
               renderCurrentPage();
             }
@@ -2521,7 +2539,9 @@ function toggleAutoRefresh() {
 // ================================================================
 // CLOCK
 // ================================================================
+var _clockInterval = null;
 function startClock() {
+  if (_clockInterval) clearInterval(_clockInterval);
   function update() {
     var now = new Date();
     var opts = {timeZone:'Asia/Jakarta', hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit'};
@@ -2530,7 +2550,7 @@ function startClock() {
     if (el) el.textContent = timeRaw + ' WIB';
   }
   update();
-  setInterval(update, 1000);
+  _clockInterval = setInterval(update, 1000);
 }
 
 // ================================================================
