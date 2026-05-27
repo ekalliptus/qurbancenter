@@ -7,12 +7,10 @@
     "build": "astro build",
     "preview": "bun run build && wrangler dev",
     "deploy": "bun run build && wrangler deploy",
-    "db:migrate": "bun db/migrate.ts",
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
     "@astrojs/cloudflare": "12",
-    "@neondatabase/serverless": "^1.0.0",
     "astro": "^5.9.2"
   },
   "devDependencies": {
