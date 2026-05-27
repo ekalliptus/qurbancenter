@@ -1580,12 +1580,57 @@ function fg(label,type,id,val) {
   }
   return '<div class="form-group"><label>'+label+'</label><input type="'+type+'" class="form-control" id="'+id+'" value="'+(val!=null?val:'')+'"></div>';
 }
+var fieldPathMap = {
+  inp_totalHewan: 'totalHewan',
+  inp_kakiKepalaTransit: 'transit.kakiKepala',
+  inp_karkasTotal: 'karkas.total',
+  inp_abfKeluar: 'abf.keluar',
+  inp_cacahDariAbf: 'cacahDariAbf',
+  inp_packKecilTotal: 'packingKecil.total',
+  inp_packKarkasDomba: 'packingKarkas.domba',
+  inp_packKarkasSapi: 'packingKarkas.sapi',
+  inp_distKarkasDomba: 'distribusiKarkas.domba',
+  inp_distKarkasSapi: 'distribusiKarkas.sapi',
+  inp_distKarkasSelesaiDomba: 'distribusiKarkas.selesaiDomba',
+  inp_distKarkasSelesaiSapi: 'distribusiKarkas.selesaiSapi'
+};
+function resolveFieldPath(id) {
+  if (fieldPathMap[id]) return fieldPathMap[id];
+  var m;
+  m = id.match(/^f_kandang_keluar_(\d+)$/);
+  if (m) return 'kandang.' + (parseInt(m[1]) - 1) + '.keluar';
+  m = id.match(/^f_sembelih_dipotong_(\d+)$/);
+  if (m) return 'sembelih.' + (parseInt(m[1]) - 1) + '.dipotong';
+  m = id.match(/^f_lane_total_(\d+)$/);
+  if (m) return 'lane.' + (parseInt(m[1]) - 1) + '.total';
+  m = id.match(/^f_cacah_total_(\d+)$/);
+  if (m) return 'cacah.' + (parseInt(m[1]) - 1) + '.total';
+  return null;
+}
 function numStep(id, dir) {
   var el = document.getElementById(id);
   if (!el) return;
   var v = parseInt(el.value) || 0;
   el.value = Math.max(0, v + dir);
-  el.dispatchEvent(new Event('input', {bubbles:true}));
+  var path = resolveFieldPath(id);
+  if (path) {
+    fetch('/api/increment', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({day:currentView, path:path, delta:dir})})
+      .then(function(r) { return r.json(); })
+      .then(function(d) { if (d.ok && el) { el.value = d.value; var state = getState(); if (state) { setStatePath(state, path, d.value); } } })
+      .catch(function() {});
+  } else {
+    el.dispatchEvent(new Event('input', {bubbles:true}));
+  }
+}
+function setStatePath(obj, path, val) {
+  var parts = path.split('.'), cur = obj;
+  for (var i = 0; i < parts.length - 1; i++) {
+    var k = parts[i];
+    if (Array.isArray(cur)) cur = cur[parseInt(k)]; else cur = cur[k];
+    if (!cur) return;
+  }
+  var last = parts[parts.length - 1];
+  if (Array.isArray(cur)) cur[parseInt(last)] = val; else cur[last] = val;
 }
 function addDistKecilRow() {
   var state = getState(); if (!state) return;
@@ -1612,7 +1657,11 @@ function updateDistKecilRow(idx, field, val) {
 function distKecilNumStep(idx, dir) {
   var el = document.getElementById('dk_jumlah_'+idx); if (!el) return;
   var v = parseInt(el.value)||0; el.value = Math.max(0, v+dir);
-  updateDistKecilRow(idx, 'jumlah', Math.max(0, v+dir));
+  var path = 'distribusiKecil.lokasi.' + idx + '.jumlah';
+  fetch('/api/increment', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({day:currentView, path:path, delta:dir})})
+    .then(function(r) { return r.json(); })
+    .then(function(d) { if (d.ok && el) { el.value = d.value; var state = getState(); if (state && state.distribusiKecil && state.distribusiKecil.lokasi && state.distribusiKecil.lokasi[idx]) state.distribusiKecil.lokasi[idx].jumlah = d.value; } })
+    .catch(function() { updateDistKecilRow(idx, 'jumlah', Math.max(0, v+dir)); });
 }
 function fgSelect(label,id,current) {
   return '<div class="form-group"><label>'+label+'</label><select class="form-control" id="'+id+'">'+statusOpts(current)+'</select></div>';
