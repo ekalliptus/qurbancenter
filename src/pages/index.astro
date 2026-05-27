@@ -1004,12 +1004,13 @@ function renderCurrentPage() {
 }
 
 var _listenersAttached = false;
+var _skipNextCollect = false;
 function setupPageListeners() {
   var pc = document.getElementById('pageContent');
   if (currentPage === 'input' && currentView !== 'all' && !_listenersAttached) {
     _listenersAttached = true;
-    pc.addEventListener('input', function(e) { if (e.target.classList.contains('form-control')) { collectCurrentFormData(); queueDaySave(currentView); } });
-    pc.addEventListener('change', function(e) { if (e.target.classList.contains('form-control')) { collectCurrentFormData(); queueDaySave(currentView); } });
+    pc.addEventListener('input', function(e) { if (_skipNextCollect) return; if (e.target.classList.contains('form-control')) { collectCurrentFormData(); queueDaySave(currentView); } });
+    pc.addEventListener('change', function(e) { if (_skipNextCollect) return; if (e.target.classList.contains('form-control')) { collectCurrentFormData(); queueDaySave(currentView); } });
   }
   if (currentPage !== 'input') _listenersAttached = false;
   var searchEl = document.getElementById('searchKalet');
@@ -1615,9 +1616,11 @@ function numStep(id, dir) {
   el.value = Math.max(0, v + dir);
   var path = resolveFieldPath(id);
   if (path) {
+    _skipNextCollect = true;
+    setTimeout(function() { _skipNextCollect = false; }, 50);
     fetch('/api/increment', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({day:currentView, path:path, delta:dir})})
       .then(function(r) { return r.json(); })
-      .then(function(d) { if (d.ok && el) { el.value = d.value; var state = getState(); if (state) { setStatePath(state, path, d.value); } } })
+      .then(function(d) { if (d.ok) { _skipNextCollect = true; if (el) el.value = d.value; var state = getState(); if (state) setStatePath(state, path, d.value); setTimeout(function() { _skipNextCollect = false; }, 50); } })
       .catch(function() {});
   } else {
     el.dispatchEvent(new Event('input', {bubbles:true}));
@@ -2326,45 +2329,51 @@ function initSupabaseRealtime() {
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndldXlpZ25pZWxsY2traXl4eGx6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4NTUxNTUsImV4cCI6MjA5NTQzMTE1NX0.y13osUe66LEJBti0Exaid-59VXdUQ2mCwbBGqB21TEo'
   );
 
+  var _broadcastTimers = {};
   realtimeChannel = supabaseClient
     .channel('qurban-sync')
     .on('broadcast', {event: 'state-changed'}, function(msg) {
       var key = msg.payload && msg.payload.key;
-      console.log('[RT] Broadcast received:', key);
       if (!key) return;
 
       if (isSaving || pendingSave || saveTimeout) return;
 
-      if (key === 'global-settings') {
-        loadSettings().then(function() {
-          var shouldDark = !!settings.darkMode;
-          if (shouldDark !== document.body.classList.contains('dark')) document.body.classList.toggle('dark', shouldDark);
-          applyTheme(loadTheme());
-          if (settings.forceRefreshTs && settings.forceRefreshTs > lastKnownForceTs && lastKnownForceTs > 0) {
-            window.location.reload(); return;
-          }
-          lastKnownForceTs = settings.forceRefreshTs || 0;
-        });
-        return;
-      }
+      if (_broadcastTimers[key]) clearTimeout(_broadcastTimers[key]);
+      _broadcastTimers[key] = setTimeout(function() {
+        delete _broadcastTimers[key];
+        console.log('[RT] Processing broadcast:', key);
 
-      if (key.indexOf('day-') === 0) {
-        var dayNum = key.replace('day-', '');
-        if (dirtyDays[dayNum]) return;
-        fetch('/api/day-state?day=' + dayNum).then(function(r) { return r.json(); }).then(function(data) {
-          var result = migrateState(data || defaultDayState());
-          dayStates[dayNum] = result.state;
-          if (currentPage === 'pengaturan') return;
-          if (currentPage === 'input' && String(currentView) === String(dayNum)) {
-            syncInputDom(result.state);
-          } else {
-            renderCurrentPage();
-          }
-        }).catch(function() {});
-        return;
-      }
+        if (key === 'global-settings') {
+          loadSettings().then(function() {
+            var shouldDark = !!settings.darkMode;
+            if (shouldDark !== document.body.classList.contains('dark')) document.body.classList.toggle('dark', shouldDark);
+            applyTheme(loadTheme());
+            if (settings.forceRefreshTs && settings.forceRefreshTs > lastKnownForceTs && lastKnownForceTs > 0) {
+              window.location.reload(); return;
+            }
+            lastKnownForceTs = settings.forceRefreshTs || 0;
+          });
+          return;
+        }
 
-      loadAllStates().then(function() { renderCurrentPage(); });
+        if (key.indexOf('day-') === 0) {
+          var dayNum = key.replace('day-', '');
+          if (dirtyDays[dayNum]) return;
+          fetch('/api/day-state?day=' + dayNum).then(function(r) { return r.json(); }).then(function(data) {
+            var result = migrateState(data || defaultDayState());
+            dayStates[dayNum] = result.state;
+            if (currentPage === 'pengaturan') return;
+            if (currentPage === 'input' && String(currentView) === String(dayNum)) {
+              syncInputDom(result.state);
+            } else {
+              renderCurrentPage();
+            }
+          }).catch(function() {});
+          return;
+        }
+
+        loadAllStates().then(function() { renderCurrentPage(); });
+      }, 300);
     })
     .subscribe(function(status) {
       console.log('[RT] Status:', status);
