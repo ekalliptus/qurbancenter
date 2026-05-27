@@ -130,7 +130,7 @@ export async function saveDayState(day: number, data: unknown) {
 }
 
 export async function getAllDayStates() {
-  const rows = await supaSelect('id=like.day-%');
+  const rows = await supaSelect('id=like.day-*');
   const states: Record<string, any> = {};
   for (const row of rows) {
     const num = row.id.replace('day-', '');
