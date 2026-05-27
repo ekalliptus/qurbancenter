@@ -807,8 +807,6 @@ function queueDaySave(day) {
 // VIEW SWITCHING
 // ================================================================
 function switchView(view) {
-  // Collect any pending form data before switching view/day
-  if (currentPage === 'input' && currentView !== 'all') { collectCurrentFormData(); }
   currentView = view;
   currentPage = 'dashboard';
   var url = new URL(window.location);
@@ -830,8 +828,6 @@ function switchView(view) {
 }
 
 function navigate(page) {
-  // Collect any pending form data before leaving input page
-  if (currentPage === 'input' && currentView !== 'all') { collectCurrentFormData(); }
   currentPage = page;
   renderCurrentPage();
   updateHeaderTitle();
@@ -1010,8 +1006,8 @@ function setupPageListeners() {
   // Auto-save for input page
   var pc = document.getElementById('pageContent');
   if (currentPage === 'input' && currentView !== 'all') {
-    pc.addEventListener('input', function(e) { if (e.target.classList.contains('form-control')) { lastInputTime=Date.now(); collectCurrentFormData(); queueDaySave(currentView); } });
-    pc.addEventListener('change', function(e) { if (e.target.classList.contains('form-control')) { lastInputTime=Date.now(); collectCurrentFormData(); queueDaySave(currentView); } });
+    pc.addEventListener('input', function(e) { if (e.target.classList.contains('form-control')) { collectCurrentFormData(); queueDaySave(currentView); } });
+    pc.addEventListener('change', function(e) { if (e.target.classList.contains('form-control')) { collectCurrentFormData(); queueDaySave(currentView); } });
   }
   // Kalet search/filter
   var searchEl = document.getElementById('searchKalet');
@@ -1622,84 +1618,106 @@ function fgSelect(label,id,current) {
 }
 
 function collectCurrentFormData() {
+  if (currentPage !== 'input' || currentView === 'all') return;
   var state = getState();
   if (!state) return;
-  var gv = function(id) { var el = document.getElementById(id); return el ? el.value : ''; };
-  var gi = function(id) { var v = parseInt(gv(id)); return isNaN(v) ? 0 : v; };
 
-  state.totalHewan = gi('inp_totalHewan');
-  console.log('[COLLECT] day='+currentView+' totalHewan='+state.totalHewan+' kandang1_dom='+gv('f_kandang_keluar_1'));
-  state.tanggal = gv('inp_tanggal');
-  state.waktuMulai = gv('inp_waktuMulai');
-  state.waktuSelesai = gv('inp_waktuSelesai');
-
-  var kandangMulai = gv('f_kandang_mulai'), kandangSelesai = gv('f_kandang_selesai');
-  (state.kandang||[]).forEach(function(k) {
-    k.keluar = gi('f_kandang_keluar_'+k.no);
-    k.waktuMulai = kandangMulai;
-    k.waktuSelesai = kandangSelesai;
-  });
-  var sembelihMulai = gv('f_sembelih_mulai'), sembelihSelesai = gv('f_sembelih_selesai');
-  (state.sembelih||[]).forEach(function(s) {
-    s.dipotong = gi('f_sembelih_dipotong_'+s.no);
-    s.waktuMulai = sembelihMulai;
-    s.waktuSelesai = sembelihSelesai;
-  });
-  if (state.transit) {
-    state.transit.kakiKepala = gi('inp_kakiKepalaTransit');
-    state.transit.waktuMulai = gv('inp_transitMulai');
-    state.transit.waktuSelesai = gv('inp_transitSelesai');
-  }
-  (state.lane||[]).forEach(function(ln) {
-    ln.total = gi('f_lane_total_'+ln.no);
-  });
-  state.pengulitanMulai = gv('inp_pengulitanMulai');
-  state.pengulitanSelesai = gv('inp_pengulitanSelesai');
-  if (state.karkas) {
-    state.karkas.total = gi('inp_karkasTotal');
-    state.karkas.waktuMulai = gv('inp_karkasMulai');
-    state.karkas.waktuSelesai = gv('inp_karkasSelesai');
-  }
-  if (state.abf) {
-    state.abf.keluar = gi('inp_abfKeluar');
-    state.abf.waktuMulai = gv('inp_abfMulai');
-    state.abf.waktuSelesai = gv('inp_abfSelesai');
-  }
-  var cacahMulai = gv('f_cacah_mulai'), cacahSelesai = gv('f_cacah_selesai');
-  (state.cacah||[]).forEach(function(c) {
-    c.total = gi('f_cacah_total_'+c.no);
-    c.waktuMulai = cacahMulai;
-    c.waktuSelesai = cacahSelesai;
-  });
-  state.cacahDariAbf = gi('inp_cacahDariAbf');
-  if (state.packingKecil) {
-    state.packingKecil.total = gi('inp_packKecilTotal');
-    state.packingKecil.waktuMulai = gv('inp_packKecilMulai');
-    state.packingKecil.waktuSelesai = gv('inp_packKecilSelesai');
-  }
-  if (state.packingKarkas) {
-    state.packingKarkas.domba = gi('inp_packKarkasDomba');
-    state.packingKarkas.sapi = gi('inp_packKarkasSapi');
-    state.packingKarkas.waktuMulai = gv('inp_packKarkasMulai');
-    state.packingKarkas.waktuSelesai = gv('inp_packKarkasSelesai');
-  }
-  if (state.distribusiKecil) {
-    state.distribusiKecil.waktuMulai = gv('inp_distKecilMulai');
-    state.distribusiKecil.waktuSelesai = gv('inp_distKecilWSelesai');
-  }
-  if (state.distribusiKarkas) {
-    state.distribusiKarkas.domba = gi('inp_distKarkasDomba');
-    state.distribusiKarkas.sapi = gi('inp_distKarkasSapi');
-    state.distribusiKarkas.selesaiDomba = gi('inp_distKarkasSelesaiDomba');
-    state.distribusiKarkas.selesaiSapi = gi('inp_distKarkasSelesaiSapi');
-    state.distribusiKarkas.waktuMulai = gv('inp_distKarkasMulai');
-    state.distribusiKarkas.waktuSelesai = gv('inp_distKarkasWSelesai');
+  // Only read DOM elements that exist — prevents overwriting state with 0 when form not rendered
+  function has(id) { return !!document.getElementById(id); }
+  function gv(id) { var el = document.getElementById(id); return el ? el.value : undefined; }
+  function gi(id) { var el = document.getElementById(id); if (!el) return undefined; var v = parseInt(el.value); return isNaN(v) ? 0 : v; }
+  function setIfPresent(obj, key, id, isNum) {
+    var val = isNum ? gi(id) : gv(id);
+    if (val !== undefined) obj[key] = val;
   }
 
-  // Pipeline validation
-  var kel = totalKeluarDay(state), dip = totalDipotongDay(state), kul = totalDikulitiDay(state);
-  if (dip > kel) toast('Tersembelih ('+dip+') > Keluar Kandang ('+kel+')','error');
-  if (kul > dip) toast('Terkuliti ('+kul+') > Tersembelih ('+dip+')','error');
+  setIfPresent(state, 'totalHewan', 'inp_totalHewan', true);
+  setIfPresent(state, 'tanggal', 'inp_tanggal', false);
+  setIfPresent(state, 'waktuMulai', 'inp_waktuMulai', false);
+  setIfPresent(state, 'waktuSelesai', 'inp_waktuSelesai', false);
+
+  if (has('f_kandang_keluar_1')) {
+    var kandangMulai = gv('f_kandang_mulai'), kandangSelesai = gv('f_kandang_selesai');
+    (state.kandang||[]).forEach(function(k) {
+      var v = gi('f_kandang_keluar_'+k.no); if (v !== undefined) k.keluar = v;
+      if (kandangMulai !== undefined) k.waktuMulai = kandangMulai;
+      if (kandangSelesai !== undefined) k.waktuSelesai = kandangSelesai;
+    });
+  }
+
+  if (has('f_sembelih_dipotong_1')) {
+    var sembelihMulai = gv('f_sembelih_mulai'), sembelihSelesai = gv('f_sembelih_selesai');
+    (state.sembelih||[]).forEach(function(s) {
+      var v = gi('f_sembelih_dipotong_'+s.no); if (v !== undefined) s.dipotong = v;
+      if (sembelihMulai !== undefined) s.waktuMulai = sembelihMulai;
+      if (sembelihSelesai !== undefined) s.waktuSelesai = sembelihSelesai;
+    });
+  }
+
+  if (state.transit && has('inp_kakiKepalaTransit')) {
+    setIfPresent(state.transit, 'kakiKepala', 'inp_kakiKepalaTransit', true);
+    setIfPresent(state.transit, 'waktuMulai', 'inp_transitMulai', false);
+    setIfPresent(state.transit, 'waktuSelesai', 'inp_transitSelesai', false);
+  }
+
+  if (has('f_lane_total_1')) {
+    (state.lane||[]).forEach(function(ln) {
+      var v = gi('f_lane_total_'+ln.no); if (v !== undefined) ln.total = v;
+    });
+    setIfPresent(state, 'pengulitanMulai', 'inp_pengulitanMulai', false);
+    setIfPresent(state, 'pengulitanSelesai', 'inp_pengulitanSelesai', false);
+  }
+
+  if (state.karkas && has('inp_karkasTotal')) {
+    setIfPresent(state.karkas, 'total', 'inp_karkasTotal', true);
+    setIfPresent(state.karkas, 'waktuMulai', 'inp_karkasMulai', false);
+    setIfPresent(state.karkas, 'waktuSelesai', 'inp_karkasSelesai', false);
+  }
+
+  if (state.abf && has('inp_abfKeluar')) {
+    setIfPresent(state.abf, 'keluar', 'inp_abfKeluar', true);
+    setIfPresent(state.abf, 'waktuMulai', 'inp_abfMulai', false);
+    setIfPresent(state.abf, 'waktuSelesai', 'inp_abfSelesai', false);
+  }
+
+  if (has('f_cacah_total_1')) {
+    var cacahMulai = gv('f_cacah_mulai'), cacahSelesai = gv('f_cacah_selesai');
+    (state.cacah||[]).forEach(function(c) {
+      var v = gi('f_cacah_total_'+c.no); if (v !== undefined) c.total = v;
+      if (cacahMulai !== undefined) c.waktuMulai = cacahMulai;
+      if (cacahSelesai !== undefined) c.waktuSelesai = cacahSelesai;
+    });
+    setIfPresent(state, 'cacahDariAbf', 'inp_cacahDariAbf', true);
+  }
+
+  if (state.packingKecil && has('inp_packKecilTotal')) {
+    setIfPresent(state.packingKecil, 'total', 'inp_packKecilTotal', true);
+    setIfPresent(state.packingKecil, 'waktuMulai', 'inp_packKecilMulai', false);
+    setIfPresent(state.packingKecil, 'waktuSelesai', 'inp_packKecilSelesai', false);
+  }
+
+  if (state.packingKarkas && has('inp_packKarkasDomba')) {
+    setIfPresent(state.packingKarkas, 'domba', 'inp_packKarkasDomba', true);
+    setIfPresent(state.packingKarkas, 'sapi', 'inp_packKarkasSapi', true);
+    setIfPresent(state.packingKarkas, 'waktuMulai', 'inp_packKarkasMulai', false);
+    setIfPresent(state.packingKarkas, 'waktuSelesai', 'inp_packKarkasSelesai', false);
+  }
+
+  if (state.distribusiKecil && has('inp_distKecilMulai')) {
+    setIfPresent(state.distribusiKecil, 'waktuMulai', 'inp_distKecilMulai', false);
+    setIfPresent(state.distribusiKecil, 'waktuSelesai', 'inp_distKecilWSelesai', false);
+  }
+
+  if (state.distribusiKarkas && has('inp_distKarkasDomba')) {
+    setIfPresent(state.distribusiKarkas, 'domba', 'inp_distKarkasDomba', true);
+    setIfPresent(state.distribusiKarkas, 'sapi', 'inp_distKarkasSapi', true);
+    setIfPresent(state.distribusiKarkas, 'selesaiDomba', 'inp_distKarkasSelesaiDomba', true);
+    setIfPresent(state.distribusiKarkas, 'selesaiSapi', 'inp_distKarkasSelesaiSapi', true);
+    setIfPresent(state.distribusiKarkas, 'waktuMulai', 'inp_distKarkasMulai', false);
+    setIfPresent(state.distribusiKarkas, 'waktuSelesai', 'inp_distKarkasWSelesai', false);
+  }
+
+  console.log('[COLLECT] day='+currentView+' totalHewan='+state.totalHewan+' kandang1='+((state.kandang&&state.kandang[0])?state.kandang[0].keluar:'-'));
 }
 
 // ================================================================
@@ -2196,27 +2214,8 @@ function toggleDark() {
 function startAutoRefresh() {
   if (autoRefreshInterval) clearInterval(autoRefreshInterval);
   autoRefreshInterval = setInterval(function() {
-    if (currentPage === 'pengaturan') { return; }
-    if (isSaving || pendingSave || saveTimeout) { console.log('[REFRESH] skip (saving='+isSaving+' pending='+!!pendingSave+' timeout='+!!saveTimeout+')'); return; }
-    var isInputPage = (currentPage === 'input');
-    var recentlyTyped = isInputPage && (Date.now() - lastInputTime < 3000);
-    if (isInputPage && recentlyTyped) {
-      // User is actively typing - only fetch data into memory, don't re-render
-      console.log('[REFRESH] input page - background sync only (user typing)');
-      loadAllStates().then(function() {
-        return loadSettings();
-      }).then(function() {
-        if (settings.forceRefreshTs && settings.forceRefreshTs > lastKnownForceTs && lastKnownForceTs > 0) {
-          window.location.reload(); return;
-        }
-        lastKnownForceTs = settings.forceRefreshTs || 0;
-        var shouldDark = !!settings.darkMode;
-        if (shouldDark !== document.body.classList.contains('dark')) document.body.classList.toggle('dark', shouldDark);
-        applyTheme(loadTheme());
-        // Don't re-render - data is now in memory for when user navigates away
-      });
-      return;
-    }
+    if (currentPage === 'input' || currentPage === 'pengaturan') { return; }
+    if (isSaving || pendingSave || saveTimeout) { return; }
     loadAllStates().then(function() {
       return loadSettings();
     }).then(function() {
