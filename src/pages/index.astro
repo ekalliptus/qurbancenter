@@ -670,7 +670,11 @@ body[data-role="editor"] .admin-only{display:none!important}
   </div>
 </div>
 
-<script is:inline define:vars={{ supabaseUrl, supabaseKey }}>
+<script define:vars={{ supabaseUrl, supabaseKey }}>
+window.__SUPA_URL = supabaseUrl;
+window.__SUPA_KEY = supabaseKey;
+</script>
+<script is:inline>
 // ================================================================
 // ESCAPE HTML (XSS prevention)
 // ================================================================
@@ -2544,7 +2548,7 @@ function initSupabaseRealtime() {
     startPollingFallback();
     return;
   }
-  if (!supabaseClient) supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+  if (!supabaseClient) supabaseClient = supabase.createClient(window.__SUPA_URL, window.__SUPA_KEY);
 
   var _broadcastTimers = {};
   realtimeChannel = supabaseClient
