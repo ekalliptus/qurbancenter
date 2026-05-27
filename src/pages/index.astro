@@ -1673,6 +1673,21 @@ function _retryFromOverlay() {
   _softRefresh();
 }
 
+function _revertFailedJobs(failedJob) {
+  var all = [failedJob].concat(_incrementQueue);
+  _incrementQueue = [];
+  var labels = [];
+  all.forEach(function(j) {
+    var el = document.getElementById(j.id);
+    if (el && j.oldVal !== undefined) {
+      _skipNextCollect = true;
+      el.value = j.oldVal;
+    }
+    if (j.label && labels.indexOf(j.label) === -1) labels.push(j.label);
+  });
+  setTimeout(function() { _skipNextCollect = false; }, 50);
+  return labels;
+}
 function _doIncrement(job) {
   var controller = new AbortController();
   var timeout = setTimeout(function() { controller.abort(); }, 10000);
@@ -1696,9 +1711,11 @@ function _doIncrement(job) {
     .catch(function() {
       clearTimeout(timeout);
       clearTimeout(_slowTimer);
-      _incrementQueue = [];
-      _showOverlayFailed();
+      var labels = _revertFailedJobs(job);
       _incrementBusy = false;
+      _hideOverlay();
+      _softRefresh();
+      toast('Gagal kirim: ' + labels.join(', ') + '. Silakan input ulang.', 'error');
     });
 }
 
@@ -1711,16 +1728,29 @@ function _processIncrementQueue() {
   _doIncrement(job);
 }
 
+function _fieldLabel(id) {
+  if (id === 'inp_totalHewan') return 'Total Hewan';
+  var m = id.match(/^f_kandang_keluar_(\d+)$/); if (m) return 'Kandang #'+m[1];
+  m = id.match(/^f_sembelih_dipotong_(\d+)$/); if (m) return 'Lubang #'+m[1];
+  m = id.match(/^f_lane_total_(\d+)$/); if (m) return 'Lane #'+m[1];
+  m = id.match(/^f_cacah_total_(\d+)$/); if (m) return 'Meja Cacah #'+m[1];
+  if (id === 'inp_karkasTotal') return 'Karkas';
+  if (id === 'inp_abfKeluar') return 'ABF Keluar';
+  if (id === 'inp_cacahDariAbf') return 'Cacah dari ABF';
+  if (id === 'inp_packKecilTotal') return 'Packing Kecil';
+  if (id.indexOf('dk_jumlah_') === 0) return 'Distribusi Kecil';
+  return id;
+}
 function numStep(id, dir) {
   var el = document.getElementById(id);
   if (!el) return;
-  var v = parseInt(el.value) || 0;
-  el.value = Math.max(0, v + dir);
+  var oldVal = parseInt(el.value) || 0;
+  el.value = Math.max(0, oldVal + dir);
   var path = resolveFieldPath(id);
   if (path) {
     _skipNextCollect = true;
     setTimeout(function() { _skipNextCollect = false; }, 50);
-    _incrementQueue.push({id:id, day:currentView, path:path, delta:dir});
+    _incrementQueue.push({id:id, day:currentView, path:path, delta:dir, oldVal:oldVal, label:_fieldLabel(id)});
     _processIncrementQueue();
   } else {
     el.dispatchEvent(new Event('input', {bubbles:true}));
@@ -1760,11 +1790,11 @@ function updateDistKecilRow(idx, field, val) {
 }
 function distKecilNumStep(idx, dir) {
   var el = document.getElementById('dk_jumlah_'+idx); if (!el) return;
-  var v = parseInt(el.value)||0; el.value = Math.max(0, v+dir);
+  var oldVal = parseInt(el.value)||0; el.value = Math.max(0, oldVal+dir);
   var path = 'distribusiKecil.lokasi.' + idx + '.jumlah';
   _skipNextCollect = true;
   setTimeout(function() { _skipNextCollect = false; }, 50);
-  _incrementQueue.push({id:'dk_jumlah_'+idx, day:currentView, path:path, delta:dir});
+  _incrementQueue.push({id:'dk_jumlah_'+idx, day:currentView, path:path, delta:dir, oldVal:oldVal, label:'Distribusi Kecil #'+(idx+1)});
   _processIncrementQueue();
 }
 function fgSelect(label,id,current) {
