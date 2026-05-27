@@ -1,7 +1,9 @@
 import { defineConfig } from 'astro/config';
-import cloudflare from '@astrojs/cloudflare';
+import vercel from '@astrojs/vercel';
 
 export default defineConfig({
   output: 'server',
-  adapter: cloudflare(),
+  adapter: vercel({
+    maxDuration: 15,
+  }),
 });
