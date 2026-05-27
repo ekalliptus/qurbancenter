@@ -363,7 +363,13 @@ input[type=number].form-control::-webkit-inner-spin-button,input[type=number].fo
 .form-control:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(16,185,129,.1)}
 .form-control:hover{border-color:var(--text-muted)}
 .form-section{background:var(--surface);border-radius:var(--radius);border:1px solid var(--border-light);padding:22px;margin-bottom:20px;box-shadow:var(--shadow)}
+.form-section.tab-hidden{display:none}
 .form-section-title{font-size:14px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px;padding-bottom:12px;border-bottom:1px solid var(--border-light);color:var(--text-primary)}
+.input-tabs{display:flex;gap:6px;overflow-x:auto;padding:4px 0 16px;-webkit-overflow-scrolling:touch;scrollbar-width:none;position:sticky;top:0;z-index:50;background:var(--bg);margin:-4px 0 4px}
+.input-tabs::-webkit-scrollbar{display:none}
+.input-tab{padding:8px 16px;border-radius:20px;border:1px solid var(--border);background:var(--surface);font-size:12px;font-weight:600;color:var(--text-secondary);cursor:pointer;white-space:nowrap;transition:all var(--transition);flex-shrink:0}
+.input-tab:hover{border-color:var(--text-muted);color:var(--text-primary)}
+.input-tab.active{background:var(--green);color:#fff;border-color:var(--green);box-shadow:0 2px 8px rgba(16,185,129,.25)}
 
 /* Autosave badge */
 .autosave-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;color:var(--green-dark);background:var(--green-light);border:1px solid rgba(16,185,129,.2)}
@@ -668,6 +674,7 @@ body[data-role="editor"] .admin-only{display:none!important}
 // ================================================================
 var currentView = 'all';
 var currentPage = 'dashboard';
+var currentInputTab = 'umum';
 var dayStates = {1:null, 2:null, 3:null, 4:null};
 var settings = {darkMode:false, theme:{}, autoRefresh:true, featureConfig:{}, monitorWidgets:{}, monitorOrder:[], forceRefreshTs:0};
 var lastKnownForceTs = 0;
@@ -1452,98 +1459,103 @@ function renderInputPage(state) {
   var feat = getFeatureConfig(currentView);
   var html = '<div class="page-header"><div><div class="page-title">Input Data</div><div class="page-subtitle">Data otomatis tersimpan saat diubah</div></div><div class="page-actions"><span class="autosave-badge"><span class="autosave-dot"></span> Auto-save aktif</span></div></div>';
 
-  // Data Umum
-  html += '<div class="form-section"><div class="form-section-title">Data Umum Qurban</div><div class="form-grid">';
+  var tabs = [{id:'umum',label:'Umum'}];
+  if (feat.kandang) tabs.push({id:'kandang',label:'Kandang'});
+  if (feat.sembelih) tabs.push({id:'sembelih',label:'Sembelih'});
+  if (feat.transit) tabs.push({id:'transit',label:'Transit'});
+  if (feat.pengulitan) tabs.push({id:'pengulitan',label:'Pengulitan'});
+  if (feat.karkas) tabs.push({id:'karkas',label:'Karkas'});
+  if (feat.abf) tabs.push({id:'abf',label:'ABF'});
+  if (feat.cacah) tabs.push({id:'cacah',label:'Cacah'});
+  if (feat.packingKecil) tabs.push({id:'packKecil',label:'Pack Kecil'});
+  if (feat.packingKarkas) tabs.push({id:'packKarkas',label:'Pack Karkas'});
+  if (feat.distribusiKecil) tabs.push({id:'distKecil',label:'Dist Kecil'});
+  if (feat.distribusiKarkas) tabs.push({id:'distKarkas',label:'Dist Karkas'});
+
+  if (!tabs.some(function(t){return t.id===currentInputTab})) currentInputTab = 'umum';
+
+  html += '<div class="input-tabs" id="inputTabs">';
+  tabs.forEach(function(t) {
+    html += '<button class="input-tab'+(t.id===currentInputTab?' active':'')+'" data-target="'+t.id+'" onclick="switchInputTab(\''+t.id+'\')">'+t.label+'</button>';
+  });
+  html += '</div>';
+
+  function vis(id) { return id === currentInputTab ? '' : ' tab-hidden'; }
+
+  html += '<div class="form-section'+vis('umum')+'" data-tab="umum"><div class="form-section-title">Data Umum Qurban</div><div class="form-grid">';
   html += fg('Total Hewan Qurban','number','inp_totalHewan',state.totalHewan||0);
   html += fg('Tanggal Qurban','date','inp_tanggal',state.tanggal||'');
   html += fg('Waktu Mulai','time','inp_waktuMulai',state.waktuMulai||'');
   html += fg('Waktu Selesai','time','inp_waktuSelesai',state.waktuSelesai||'');
   html += '</div></div>';
 
-  // Kandang
   if (feat.kandang) {
-    html += '<div class="form-section"><div class="form-section-title">Data Kandang</div><div class="form-grid">';
-    (state.kandang||[]).forEach(function(k) {
-      html += fg('Kandang #'+k.no+' Keluar','number','f_kandang_keluar_'+k.no,k.keluar||0);
-    });
+    html += '<div class="form-section'+vis('kandang')+'" data-tab="kandang"><div class="form-section-title">Data Kandang</div><div class="form-grid">';
+    (state.kandang||[]).forEach(function(k) { html += fg('Kandang #'+k.no+' Keluar','number','f_kandang_keluar_'+k.no,k.keluar||0); });
     html += fg('Waktu Mulai','time','f_kandang_mulai',state.kandang?.[0]?.waktuMulai||'');
     html += fg('Waktu Selesai','time','f_kandang_selesai',state.kandang?.[0]?.waktuSelesai||'');
     html += '</div></div>';
   }
 
-  // Sembelih
   if (feat.sembelih) {
-    html += '<div class="form-section"><div class="form-section-title">Data Penyembelihan</div><div class="form-grid">';
-    (state.sembelih||[]).forEach(function(s) {
-      html += fg('Lubang #'+s.no+' Dipotong','number','f_sembelih_dipotong_'+s.no,s.dipotong||0);
-    });
+    html += '<div class="form-section'+vis('sembelih')+'" data-tab="sembelih"><div class="form-section-title">Data Penyembelihan</div><div class="form-grid">';
+    (state.sembelih||[]).forEach(function(s) { html += fg('Lubang #'+s.no+' Dipotong','number','f_sembelih_dipotong_'+s.no,s.dipotong||0); });
     html += fg('Waktu Mulai','time','f_sembelih_mulai',state.sembelih?.[0]?.waktuMulai||'');
     html += fg('Waktu Selesai','time','f_sembelih_selesai',state.sembelih?.[0]?.waktuSelesai||'');
     html += '</div></div>';
   }
 
-  // Transit
   if (feat.transit) {
-    html += '<div class="form-section"><div class="form-section-title">Data Transit</div><div class="form-grid">';
+    html += '<div class="form-section'+vis('transit')+'" data-tab="transit"><div class="form-section-title">Data Transit</div><div class="form-grid">';
     html += fg('Kaki & Kepala','number','inp_kakiKepalaTransit',state.transit?.kakiKepala||0);
     html += fg('Waktu Mulai','time','inp_transitMulai',state.transit?.waktuMulai||'');
     html += fg('Waktu Selesai','time','inp_transitSelesai',state.transit?.waktuSelesai||'');
     html += '</div></div>';
   }
 
-  // Pengulitan
   if (feat.pengulitan) {
-    html += '<div class="form-section"><div class="form-section-title">Data Pengulitan (6 Lane)</div><div class="form-grid">';
-    (state.lane||[]).forEach(function(ln) {
-      html += fg('Lane #'+ln.no+' Total','number','f_lane_total_'+ln.no,ln.total||0);
-    });
+    html += '<div class="form-section'+vis('pengulitan')+'" data-tab="pengulitan"><div class="form-section-title">Data Pengulitan (6 Lane)</div><div class="form-grid">';
+    (state.lane||[]).forEach(function(ln) { html += fg('Lane #'+ln.no+' Total','number','f_lane_total_'+ln.no,ln.total||0); });
     html += fg('Waktu Mulai','time','inp_pengulitanMulai',state.pengulitanMulai||'');
     html += fg('Waktu Selesai','time','inp_pengulitanSelesai',state.pengulitanSelesai||'');
     html += '</div></div>';
   }
 
-  // Karkas
   if (feat.karkas) {
-    html += '<div class="form-section"><div class="form-section-title">Data Karkas</div><div class="form-grid">';
+    html += '<div class="form-section'+vis('karkas')+'" data-tab="karkas"><div class="form-section-title">Data Karkas</div><div class="form-grid">';
     html += fg('Sudah Karkas','number','inp_karkasTotal',state.karkas?.total||0);
     html += fg('Mulai Karkas','time','inp_karkasMulai',state.karkas?.waktuMulai||'');
     html += fg('Selesai Karkas','time','inp_karkasSelesai',state.karkas?.waktuSelesai||'');
     html += '</div></div>';
   }
 
-  // ABF
   if (feat.abf) {
-    html += '<div class="form-section"><div class="form-section-title">Data Keluar ABF</div><div class="form-grid">';
+    html += '<div class="form-section'+vis('abf')+'" data-tab="abf"><div class="form-section-title">Data Keluar ABF</div><div class="form-grid">';
     html += fg('Keluar ABF','number','inp_abfKeluar',state.abf?.keluar||0);
     html += fg('Mulai ABF','time','inp_abfMulai',state.abf?.waktuMulai||'');
     html += fg('Selesai ABF','time','inp_abfSelesai',state.abf?.waktuSelesai||'');
     html += '</div></div>';
   }
 
-  // Cacah
   if (feat.cacah) {
-    html += '<div class="form-section"><div class="form-section-title">Data Pencacahan</div><div class="form-grid">';
-    (state.cacah||[]).forEach(function(c) {
-      html += fg('Meja #'+c.no+' Total','number','f_cacah_total_'+c.no,c.total||0);
-    });
+    html += '<div class="form-section'+vis('cacah')+'" data-tab="cacah"><div class="form-section-title">Data Pencacahan</div><div class="form-grid">';
+    (state.cacah||[]).forEach(function(c) { html += fg('Meja #'+c.no+' Total','number','f_cacah_total_'+c.no,c.total||0); });
     html += fg('Cacah dari ABF','number','inp_cacahDariAbf',state.cacahDariAbf||0);
     html += fg('Waktu Mulai','time','f_cacah_mulai',state.cacah?.[0]?.waktuMulai||'');
     html += fg('Waktu Selesai','time','f_cacah_selesai',state.cacah?.[0]?.waktuSelesai||'');
     html += '</div></div>';
   }
 
-  // Packing Kecil
   if (feat.packingKecil) {
-    html += '<div class="form-section"><div class="form-section-title">Data Packing Kecil</div><div class="form-grid">';
+    html += '<div class="form-section'+vis('packKecil')+'" data-tab="packKecil"><div class="form-section-title">Data Packing Kecil</div><div class="form-grid">';
     html += fg('Total Box Kecil','number','inp_packKecilTotal',state.packingKecil?.total||0);
     html += fg('Mulai','time','inp_packKecilMulai',state.packingKecil?.waktuMulai||'');
     html += fg('Selesai','time','inp_packKecilSelesai',state.packingKecil?.waktuSelesai||'');
     html += '</div></div>';
   }
 
-  // Packing Karkas
   if (feat.packingKarkas) {
-    html += '<div class="form-section"><div class="form-section-title">Data Packing Karkas</div><div class="form-grid">';
+    html += '<div class="form-section'+vis('packKarkas')+'" data-tab="packKarkas"><div class="form-section-title">Data Packing Karkas</div><div class="form-grid">';
     html += fg('Packing Karkas Domba/Kambing','number','inp_packKarkasDomba',state.packingKarkas?.domba||0);
     html += fg('Packing Sapi','number','inp_packKarkasSapi',state.packingKarkas?.sapi||0);
     html += fg('Mulai','time','inp_packKarkasMulai',state.packingKarkas?.waktuMulai||'');
@@ -1551,9 +1563,8 @@ function renderInputPage(state) {
     html += '</div></div>';
   }
 
-  // Distribusi Kecil
   if (feat.distribusiKecil) {
-    html += '<div class="form-section"><div class="form-section-title">Data Distribusi Kecil</div>';
+    html += '<div class="form-section'+vis('distKecil')+'" data-tab="distKecil"><div class="form-section-title">Data Distribusi Kecil</div>';
     html += '<div class="form-grid" style="margin-bottom:16px">';
     html += fg('Waktu Mulai','time','inp_distKecilMulai',state.distribusiKecil?.waktuMulai||'');
     html += fg('Waktu Selesai','time','inp_distKecilWSelesai',state.distribusiKecil?.waktuSelesai||'');
@@ -1580,9 +1591,8 @@ function renderInputPage(state) {
     html += '</div>';
   }
 
-  // Distribusi Karkas
   if (feat.distribusiKarkas) {
-    html += '<div class="form-section"><div class="form-section-title">Data Distribusi Karkas</div><div class="form-grid">';
+    html += '<div class="form-section'+vis('distKarkas')+'" data-tab="distKarkas"><div class="form-section-title">Data Distribusi Karkas</div><div class="form-grid">';
     html += fg('Distribusi Karkas Domba/Kambing','number','inp_distKarkasDomba',state.distribusiKarkas?.domba||0);
     html += fg('Selesai Domba/Kambing','number','inp_distKarkasSelesaiDomba',state.distribusiKarkas?.selesaiDomba||0);
     html += fg('Distribusi Sapi ke ABF','number','inp_distKarkasSapi',state.distribusiKarkas?.sapi||0);
@@ -1594,6 +1604,16 @@ function renderInputPage(state) {
 
   html += '<div style="display:flex;gap:12px;flex-wrap:wrap" class="admin-only"><button class="btn btn-danger btn-sm" onclick="resetCurrentDay()">Reset Data Day '+currentView+'</button></div>';
   return html;
+}
+
+function switchInputTab(tabId) {
+  currentInputTab = tabId;
+  document.querySelectorAll('.form-section[data-tab]').forEach(function(el) {
+    el.classList.toggle('tab-hidden', el.getAttribute('data-tab') !== tabId);
+  });
+  document.querySelectorAll('.input-tab').forEach(function(el) {
+    el.classList.toggle('active', el.getAttribute('data-target') === tabId);
+  });
 }
 
 function fg(label,type,id,val) {
