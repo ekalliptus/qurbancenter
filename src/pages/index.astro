@@ -2239,7 +2239,7 @@ function initSupabaseRealtime() {
         fetch('/api/day-state?day=' + dayNum).then(function(r) { return r.json(); }).then(function(data) {
           var result = migrateState(data || defaultDayState());
           dayStates[dayNum] = result.state;
-          if (currentPage !== 'input' && currentPage !== 'pengaturan') {
+          if (currentPage !== 'pengaturan') {
             renderCurrentPage();
           }
         }).catch(function() {});
