@@ -4,7 +4,7 @@ import { COOKIE_NAME, getRole } from './lib/auth';
 export const onRequest = defineMiddleware(async (context, next) => {
   const { pathname } = context.url;
 
-  if (pathname === '/login' || pathname === '/api/login') {
+  if (pathname === '/login' || pathname === '/api/login' || pathname === '/api/public-state') {
     return next();
   }
 
