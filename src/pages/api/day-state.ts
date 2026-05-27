@@ -67,7 +67,7 @@ export async function PATCH({ request, url }: APIContext) {
     const existing = await getDayState(day) || defaultDayState();
     const merged = deepMerge(existing as any, body as any);
     await saveDayState(day, merged);
-    supaBroadcast('day-' + day);
+    await supaBroadcast('day-' + day);
     return new Response(JSON.stringify({ ok: true }), {
       headers: { 'Content-Type': 'application/json' },
     });

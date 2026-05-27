@@ -142,20 +142,22 @@ export async function getAllDayStates() {
 export async function getGlobalSettings() { return supaGet('global-settings'); }
 export async function saveGlobalSettings(data: unknown) { await supaUpsert('global-settings', data); }
 
-export function supaBroadcast(key: string) {
-  fetch(`${SUPABASE_URL}/realtime/v1/api/broadcast`, {
-    method: 'POST',
-    headers: {
-      'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${SUPABASE_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      messages: [{
-        topic: 'realtime:qurban-sync',
-        event: 'state-changed',
-        payload: { key, ts: Date.now() },
-      }],
-    }),
-  }).catch(() => {});
+export async function supaBroadcast(key: string) {
+  try {
+    await fetch(`${SUPABASE_URL}/realtime/v1/api/broadcast`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: [{
+          topic: 'qurban-sync',
+          event: 'state-changed',
+          payload: { key, ts: Date.now() },
+        }],
+      }),
+    });
+  } catch {}
 }

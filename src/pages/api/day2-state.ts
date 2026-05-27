@@ -25,7 +25,7 @@ export async function PATCH({ request }: APIContext) {
       });
     }
     await saveDay2State(body);
-    supaBroadcast('day2');
+    await supaBroadcast('day2');
     return new Response(JSON.stringify({ ok: true }), {
       headers: { 'Content-Type': 'application/json' },
     });

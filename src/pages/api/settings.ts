@@ -24,7 +24,7 @@ export async function PATCH({ request }: APIContext) {
       });
     }
     await saveSettings(body);
-    supaBroadcast('settings');
+    await supaBroadcast('settings');
     return new Response(JSON.stringify({ ok: true }), {
       headers: { 'Content-Type': 'application/json' },
     });

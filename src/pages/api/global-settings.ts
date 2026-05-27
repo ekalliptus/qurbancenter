@@ -25,7 +25,7 @@ export async function PATCH({ request }: APIContext) {
       });
     }
     await saveGlobalSettings(body);
-    supaBroadcast('global-settings');
+    await supaBroadcast('global-settings');
     return new Response(JSON.stringify({ ok: true }), {
       headers: { 'Content-Type': 'application/json' },
     });
