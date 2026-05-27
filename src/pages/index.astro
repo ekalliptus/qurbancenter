@@ -1003,14 +1003,15 @@ function renderCurrentPage() {
   setupPageListeners();
 }
 
+var _listenersAttached = false;
 function setupPageListeners() {
-  // Auto-save for input page
   var pc = document.getElementById('pageContent');
-  if (currentPage === 'input' && currentView !== 'all') {
+  if (currentPage === 'input' && currentView !== 'all' && !_listenersAttached) {
+    _listenersAttached = true;
     pc.addEventListener('input', function(e) { if (e.target.classList.contains('form-control')) { collectCurrentFormData(); queueDaySave(currentView); } });
     pc.addEventListener('change', function(e) { if (e.target.classList.contains('form-control')) { collectCurrentFormData(); queueDaySave(currentView); } });
   }
-  // Kalet search/filter
+  if (currentPage !== 'input') _listenersAttached = false;
   var searchEl = document.getElementById('searchKalet');
   var filterEl = document.getElementById('filterKaletStatus');
   if (searchEl) searchEl.addEventListener('input', filterKaletGrid);
@@ -1667,6 +1668,71 @@ function fgSelect(label,id,current) {
   return '<div class="form-group"><label>'+label+'</label><select class="form-control" id="'+id+'">'+statusOpts(current)+'</select></div>';
 }
 
+function syncInputDom(state) {
+  function setVal(id, val) {
+    var el = document.getElementById(id);
+    if (el && document.activeElement !== el) el.value = (val != null ? val : '');
+  }
+  setVal('inp_totalHewan', state.totalHewan || 0);
+  setVal('inp_tanggal', state.tanggal || '');
+  setVal('inp_waktuMulai', state.waktuMulai || '');
+  setVal('inp_waktuSelesai', state.waktuSelesai || '');
+  (state.kandang || []).forEach(function(k) { setVal('f_kandang_keluar_' + k.no, k.keluar || 0); });
+  setVal('f_kandang_mulai', state.kandang && state.kandang[0] ? state.kandang[0].waktuMulai || '' : '');
+  setVal('f_kandang_selesai', state.kandang && state.kandang[0] ? state.kandang[0].waktuSelesai || '' : '');
+  (state.sembelih || []).forEach(function(s) { setVal('f_sembelih_dipotong_' + s.no, s.dipotong || 0); });
+  setVal('f_sembelih_mulai', state.sembelih && state.sembelih[0] ? state.sembelih[0].waktuMulai || '' : '');
+  setVal('f_sembelih_selesai', state.sembelih && state.sembelih[0] ? state.sembelih[0].waktuSelesai || '' : '');
+  if (state.transit) {
+    setVal('inp_kakiKepalaTransit', state.transit.kakiKepala || 0);
+    setVal('inp_transitMulai', state.transit.waktuMulai || '');
+    setVal('inp_transitSelesai', state.transit.waktuSelesai || '');
+  }
+  (state.lane || []).forEach(function(ln) { setVal('f_lane_total_' + ln.no, ln.total || 0); });
+  setVal('inp_pengulitanMulai', state.pengulitanMulai || '');
+  setVal('inp_pengulitanSelesai', state.pengulitanSelesai || '');
+  if (state.karkas) {
+    setVal('inp_karkasTotal', state.karkas.total || 0);
+    setVal('inp_karkasMulai', state.karkas.waktuMulai || '');
+    setVal('inp_karkasSelesai', state.karkas.waktuSelesai || '');
+  }
+  if (state.abf) {
+    setVal('inp_abfKeluar', state.abf.keluar || 0);
+    setVal('inp_abfMulai', state.abf.waktuMulai || '');
+    setVal('inp_abfSelesai', state.abf.waktuSelesai || '');
+  }
+  (state.cacah || []).forEach(function(c) { setVal('f_cacah_total_' + c.no, c.total || 0); });
+  setVal('inp_cacahDariAbf', state.cacahDariAbf || 0);
+  setVal('f_cacah_mulai', state.cacah && state.cacah[0] ? state.cacah[0].waktuMulai || '' : '');
+  setVal('f_cacah_selesai', state.cacah && state.cacah[0] ? state.cacah[0].waktuSelesai || '' : '');
+  if (state.packingKecil) {
+    setVal('inp_packKecilTotal', state.packingKecil.total || 0);
+    setVal('inp_packKecilMulai', state.packingKecil.waktuMulai || '');
+    setVal('inp_packKecilSelesai', state.packingKecil.waktuSelesai || '');
+  }
+  if (state.packingKarkas) {
+    setVal('inp_packKarkasDomba', state.packingKarkas.domba || 0);
+    setVal('inp_packKarkasSapi', state.packingKarkas.sapi || 0);
+    setVal('inp_packKarkasMulai', state.packingKarkas.waktuMulai || '');
+    setVal('inp_packKarkasSelesai', state.packingKarkas.waktuSelesai || '');
+  }
+  if (state.distribusiKarkas) {
+    setVal('inp_distKarkasDomba', state.distribusiKarkas.domba || 0);
+    setVal('inp_distKarkasSapi', state.distribusiKarkas.sapi || 0);
+    setVal('inp_distKarkasSelesaiDomba', state.distribusiKarkas.selesaiDomba || 0);
+    setVal('inp_distKarkasSelesaiSapi', state.distribusiKarkas.selesaiSapi || 0);
+    setVal('inp_distKarkasMulai', state.distribusiKarkas.waktuMulai || '');
+    setVal('inp_distKarkasWSelesai', state.distribusiKarkas.waktuSelesai || '');
+  }
+  if (state.distribusiKecil) {
+    setVal('inp_distKecilMulai', state.distribusiKecil.waktuMulai || '');
+    setVal('inp_distKecilWSelesai', state.distribusiKecil.waktuSelesai || '');
+    (state.distribusiKecil.lokasi || []).forEach(function(lok, idx) {
+      setVal('dk_jumlah_' + idx, lok.jumlah || 0);
+    });
+  }
+}
+
 function collectCurrentFormData() {
   if (currentPage !== 'input' || currentView === 'all') return;
   var state = getState();
@@ -2288,7 +2354,10 @@ function initSupabaseRealtime() {
         fetch('/api/day-state?day=' + dayNum).then(function(r) { return r.json(); }).then(function(data) {
           var result = migrateState(data || defaultDayState());
           dayStates[dayNum] = result.state;
-          if (currentPage !== 'pengaturan') {
+          if (currentPage === 'pengaturan') return;
+          if (currentPage === 'input' && String(currentView) === String(dayNum)) {
+            syncInputDom(result.state);
+          } else {
             renderCurrentPage();
           }
         }).catch(function() {});
