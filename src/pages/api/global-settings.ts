@@ -1,5 +1,5 @@
 import type { APIContext } from 'astro';
-import { getGlobalSettings, saveGlobalSettings } from '../../lib/db';
+import { getGlobalSettings, saveGlobalSettings, supaBroadcast } from '../../lib/db';
 
 export async function GET() {
   try {
@@ -25,6 +25,7 @@ export async function PATCH({ request }: APIContext) {
       });
     }
     await saveGlobalSettings(body);
+    supaBroadcast('global-settings');
     return new Response(JSON.stringify({ ok: true }), {
       headers: { 'Content-Type': 'application/json' },
     });

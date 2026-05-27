@@ -1,5 +1,5 @@
 import type { APIContext } from 'astro';
-import { getDay2State, saveDay2State, defaultDay2State } from '../../lib/db';
+import { getDay2State, saveDay2State, defaultDay2State, supaBroadcast } from '../../lib/db';
 
 export async function GET() {
   try {
@@ -25,6 +25,7 @@ export async function PATCH({ request }: APIContext) {
       });
     }
     await saveDay2State(body);
+    supaBroadcast('day2');
     return new Response(JSON.stringify({ ok: true }), {
       headers: { 'Content-Type': 'application/json' },
     });

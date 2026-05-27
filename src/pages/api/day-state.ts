@@ -1,5 +1,5 @@
 import type { APIContext } from 'astro';
-import { getDayState, saveDayState, getAllDayStates, defaultDayState } from '../../lib/db';
+import { getDayState, saveDayState, getAllDayStates, defaultDayState, supaBroadcast } from '../../lib/db';
 
 function deepMerge(target: any, source: any): any {
   if (source === null || source === undefined) return target;
@@ -67,6 +67,7 @@ export async function PATCH({ request, url }: APIContext) {
     const existing = await getDayState(day) || defaultDayState();
     const merged = deepMerge(existing as any, body as any);
     await saveDayState(day, merged);
+    supaBroadcast('day-' + day);
     return new Response(JSON.stringify({ ok: true }), {
       headers: { 'Content-Type': 'application/json' },
     });

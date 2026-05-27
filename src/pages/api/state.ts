@@ -1,5 +1,5 @@
 import type { APIContext } from 'astro';
-import { getState, saveState, defaultState } from '../../lib/db';
+import { getState, saveState, defaultState, supaBroadcast } from '../../lib/db';
 
 export async function GET() {
   try {
@@ -25,6 +25,7 @@ export async function PATCH({ request }: APIContext) {
       });
     }
     await saveState(body);
+    supaBroadcast('default');
     return new Response(JSON.stringify({ ok: true }), {
       headers: { 'Content-Type': 'application/json' },
     });

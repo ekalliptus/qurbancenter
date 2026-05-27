@@ -11,6 +11,7 @@ const role = getRole(auth) || 'viewer';
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link href="https://fonts.googleapis.com/css2?family=Cabin:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Lato:wght@300;400;700&family=Lexend:wght@300;400;500;600;700&family=Montserrat:wght@300;400;500;600;700;800&family=Nunito:wght@300;400;500;600;700;800&family=Open+Sans:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600;700;800&family=Quicksand:wght@300;400;500;600;700&family=Raleway:wght@300;400;500;600;700;800&family=Roboto:wght@300;400;500;700&family=Rubik:wght@300;400;500;600;700&family=Source+Sans+3:wght@300;400;500;600;700&family=Ubuntu:wght@300;400;500;700&display=swap" rel="stylesheet" />
   <script is:inline src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script is:inline src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
 <style is:global>
 :root {
@@ -2037,22 +2038,7 @@ function mwDaySummary() {
 
 var monitorTickBusy = false;
 function monitorTick() {
-  if (monitorTickBusy) return;
-  if (isSaving || pendingSave || saveTimeout) { renderMonitorDashboard(); return; }
-  monitorTickBusy = true;
-  loadAllStates().then(function() {
-    return loadSettings();
-  }).then(function() {
-    if (settings.forceRefreshTs && settings.forceRefreshTs > lastKnownForceTs && lastKnownForceTs > 0) {
-      window.location.reload(); return;
-    }
-    lastKnownForceTs = settings.forceRefreshTs || 0;
-    var shouldDark = !!settings.darkMode;
-    if (shouldDark !== document.body.classList.contains('dark')) document.body.classList.toggle('dark', shouldDark);
-    applyTheme(loadTheme());
-    renderMonitorDashboard();
-    monitorTickBusy = false;
-  }).catch(function() { monitorTickBusy = false; });
+  renderMonitorDashboard();
 }
 
 function renderMonitorDashboard() {
@@ -2209,13 +2195,73 @@ function toggleDark() {
 }
 
 // ================================================================
-// AUTO REFRESH
+// SUPABASE REALTIME
 // ================================================================
-function startAutoRefresh() {
+var supabaseClient = null;
+var realtimeChannel = null;
+
+function initSupabaseRealtime() {
+  if (typeof supabase === 'undefined' || !supabase.createClient) {
+    console.warn('[RT] Supabase JS not loaded, falling back to polling');
+    startPollingFallback();
+    return;
+  }
+  supabaseClient = supabase.createClient(
+    'https://weuyigniellckkiyxxlz.supabase.co',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndldXlpZ25pZWxsY2traXl4eGx6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4NTUxNTUsImV4cCI6MjA5NTQzMTE1NX0.y13osUe66LEJBti0Exaid-59VXdUQ2mCwbBGqB21TEo'
+  );
+
+  realtimeChannel = supabaseClient
+    .channel('qurban-sync')
+    .on('broadcast', {event: 'state-changed'}, function(msg) {
+      var key = msg.payload && msg.payload.key;
+      console.log('[RT] Broadcast received:', key);
+      if (!key) return;
+
+      if (isSaving || pendingSave || saveTimeout) return;
+
+      if (key === 'global-settings') {
+        loadSettings().then(function() {
+          var shouldDark = !!settings.darkMode;
+          if (shouldDark !== document.body.classList.contains('dark')) document.body.classList.toggle('dark', shouldDark);
+          applyTheme(loadTheme());
+          if (settings.forceRefreshTs && settings.forceRefreshTs > lastKnownForceTs && lastKnownForceTs > 0) {
+            window.location.reload(); return;
+          }
+          lastKnownForceTs = settings.forceRefreshTs || 0;
+        });
+        return;
+      }
+
+      if (key.indexOf('day-') === 0) {
+        var dayNum = key.replace('day-', '');
+        if (dirtyDays[dayNum]) return;
+        fetch('/api/day-state?day=' + dayNum).then(function(r) { return r.json(); }).then(function(data) {
+          var result = migrateState(data || defaultDayState());
+          dayStates[dayNum] = result.state;
+          if (currentPage !== 'input' && currentPage !== 'pengaturan') {
+            renderCurrentPage();
+          }
+        }).catch(function() {});
+        return;
+      }
+
+      loadAllStates().then(function() { renderCurrentPage(); });
+    })
+    .subscribe(function(status) {
+      console.log('[RT] Status:', status);
+      if (status === 'SUBSCRIBED') {
+        console.log('[RT] Broadcast channel connected');
+      }
+    });
+}
+
+// Fallback polling if Supabase JS fails to load
+function startPollingFallback() {
   if (autoRefreshInterval) clearInterval(autoRefreshInterval);
   autoRefreshInterval = setInterval(function() {
-    if (currentPage === 'input' || currentPage === 'pengaturan') { return; }
-    if (isSaving || pendingSave || saveTimeout) { return; }
+    if (currentPage === 'input' || currentPage === 'pengaturan') return;
+    if (isSaving || pendingSave || saveTimeout) return;
     loadAllStates().then(function() {
       return loadSettings();
     }).then(function() {
@@ -2228,7 +2274,12 @@ function startAutoRefresh() {
       applyTheme(loadTheme());
       renderCurrentPage();
     });
-  }, 1000);
+  }, 10000);
+}
+
+// Keep startAutoRefresh for backward compat but now uses realtime
+function startAutoRefresh() {
+  initSupabaseRealtime();
 }
 
 function toggleAutoRefresh() {
