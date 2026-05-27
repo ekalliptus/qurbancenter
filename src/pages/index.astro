@@ -1228,7 +1228,7 @@ function renderKandangPage(state) {
   var total = state.totalHewan || 0;
   var kel = totalKeluarDay(state);
   var sisa = total - kel;
-  var html = '<div class="page-header"><div><div class="page-title">Kandang</div><div class="page-subtitle">Monitoring 8 kandang hewan qurban</div></div></div>';
+  var html = '<div class="page-header"><div><div class="page-title">Kandang</div><div class="page-subtitle">Monitoring 10 kandang hewan qurban</div></div></div>';
   html += '<div class="stats-grid">';
   html += statCardHtml('blue','Total Keluar',kel,pct(kel,total)+'%','blue');
   html += statCardHtml('maroon','Sisa Hewan',sisa,pct(sisa,total)+'%','maroon');
