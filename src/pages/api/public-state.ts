@@ -1,7 +1,7 @@
 import type { APIContext } from 'astro';
 import { getDayState, defaultDayState } from '../../lib/db';
 
-const API_KEY = 'qc_pub_alfatihah_1447';
+const API_KEY = import.meta.env.PUBLIC_API_KEY;
 
 export async function GET({ url }: APIContext) {
   const key = url.searchParams.get('key');

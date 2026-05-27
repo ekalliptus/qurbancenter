@@ -1,6 +1,12 @@
+import type { APIContext } from 'astro';
 import { resetState } from '../../lib/db';
 
-export async function POST() {
+export async function POST({ locals }: APIContext) {
+  if (locals.role !== 'admin') {
+    return new Response(JSON.stringify({ error: 'Admin only' }), {
+      status: 403, headers: { 'Content-Type': 'application/json' },
+    });
+  }
   try {
     const data = await resetState();
     return new Response(JSON.stringify(data), {
@@ -9,8 +15,7 @@ export async function POST() {
   } catch (e: any) {
     console.error('POST /api/reset error:', e);
     return new Response(JSON.stringify({ error: e?.message || 'Reset failed' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
+      status: 500, headers: { 'Content-Type': 'application/json' },
     });
   }
 }

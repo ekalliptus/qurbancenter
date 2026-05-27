@@ -2,6 +2,8 @@
 import { COOKIE_NAME, getRole } from '../lib/auth';
 const auth = Astro.cookies.get(COOKIE_NAME)?.value;
 const role = getRole(auth) || 'viewer';
+const supabaseUrl = import.meta.env.SUPABASE_URL;
+const supabaseKey = import.meta.env.SUPABASE_KEY;
 ---
 <html lang="id">
 <head>
@@ -668,7 +670,17 @@ body[data-role="editor"] .admin-only{display:none!important}
   </div>
 </div>
 
-<script is:inline>
+<script is:inline define:vars={{ supabaseUrl, supabaseKey }}>
+// ================================================================
+// ESCAPE HTML (XSS prevention)
+// ================================================================
+var _escDiv = document.createElement('div');
+function escapeHtml(str) {
+  if (!str) return '';
+  _escDiv.textContent = str;
+  return _escDiv.innerHTML;
+}
+
 // ================================================================
 // STATE
 // ================================================================
@@ -924,6 +936,9 @@ function statusOpts(current) {
     return '<option value="'+s+'"'+(current===s?' selected':'')+'>'+statusLabel(s)+'</option>';
   }).join('');
 }
+
+function kandangStatus(k) { if ((k.keluar||0) >= (k.total||1) && (k.total||0) > 0) return 'selesai'; if ((k.keluar||0) > 0) return 'berjalan'; return 'belum'; }
+function sembelihStatus(s) { if ((s.dipotong||0) > 0) return 'berjalan'; return 'belum'; }
 
 function totalKeluarDay(s) { return (s.kandang||[]).reduce(function(a,k){return a+(k.keluar||0);},0); }
 function totalDipotongDay(s) { return (s.sembelih||[]).reduce(function(a,k){return a+(k.dipotong||0);},0); }
@@ -1214,7 +1229,8 @@ function renderKandangPage(state) {
   html += '<div class="grid-4">';
   (state.kandang||[]).forEach(function(k) {
     var p2 = pct(k.keluar||0,k.total||1);
-    html += '<div class="unit-card"><div class="unit-card-header"><div class="unit-num">Kandang #'+k.no+'</div><span class="status-badge '+statusClass(k.status)+'">'+statusLabel(k.status)+'</span></div>';
+    var kSt = kandangStatus(k);
+    html += '<div class="unit-card"><div class="unit-card-header"><div class="unit-num">Kandang #'+k.no+'</div><span class="status-badge '+statusClass(kSt)+'">'+statusLabel(kSt)+'</span></div>';
     html += '<div class="unit-val">'+(k.keluar||0)+'<span style="font-size:13px;color:var(--text-muted)">/'+k.total+'</span></div>';
     html += '<div class="progress-wrap" style="margin-top:8px"><div class="progress-bar"><div class="progress-fill green" style="width:'+p2+'%"></div></div></div>';
     html += '<div class="unit-times"><div><div style="font-size:10px;color:var(--text-muted)">Mulai</div><div class="unit-time-val">'+(k.waktuMulai||'-')+'</div></div><div><div style="font-size:10px;color:var(--text-muted)">Selesai</div><div class="unit-time-val">'+(k.waktuSelesai||'-')+'</div></div></div></div>';
@@ -1420,7 +1436,7 @@ function renderDistKecilPage(state) {
     dkL.forEach(function(lok, idx) {
       var badge = lok.status === 'selesai' ? 'status-selesai' : 'status-berjalan';
       var label = lok.status === 'selesai' ? 'Selesai' : 'Proses';
-      html += '<tr><td style="padding:12px 16px;border-bottom:1px solid var(--border-light);font-family:\'JetBrains Mono\',monospace;color:var(--text-muted);font-size:13px">'+String(idx+1).padStart(2,'0')+'</td><td style="padding:12px 16px;border-bottom:1px solid var(--border-light);font-weight:600;font-size:14px">'+(lok.nama||'-')+'</td><td style="padding:12px 16px;border-bottom:1px solid var(--border-light);font-family:\'JetBrains Mono\',monospace;font-weight:700;font-size:15px">'+(lok.jumlah||0)+'</td><td style="padding:12px 16px;border-bottom:1px solid var(--border-light)"><span class="status-badge '+badge+'">'+label+'</span></td></tr>';
+      html += '<tr><td style="padding:12px 16px;border-bottom:1px solid var(--border-light);font-family:\'JetBrains Mono\',monospace;color:var(--text-muted);font-size:13px">'+String(idx+1).padStart(2,'0')+'</td><td style="padding:12px 16px;border-bottom:1px solid var(--border-light);font-weight:600;font-size:14px">'+escapeHtml(lok.nama||'-')+'</td><td style="padding:12px 16px;border-bottom:1px solid var(--border-light);font-family:\'JetBrains Mono\',monospace;font-weight:700;font-size:15px">'+(lok.jumlah||0)+'</td><td style="padding:12px 16px;border-bottom:1px solid var(--border-light)"><span class="status-badge '+badge+'">'+label+'</span></td></tr>';
     });
     html += '</tbody></table></div>';
   } else {
@@ -1579,7 +1595,7 @@ function renderInputPage(state) {
         html += '<div style="display:grid;grid-template-columns:24px 1fr;gap:8px;padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px">';
         html += '<span style="font-size:12px;color:var(--text-muted);padding-top:10px">'+(idx+1)+'.</span>';
         html += '<div class="dk-row-inner" style="display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:center">';
-        html += '<input type="text" class="form-control" placeholder="Nama lokasi" value="'+(lok.nama||'')+'" style="width:100%" onchange="updateDistKecilRow('+idx+',\'nama\',this.value)">';
+        html += '<input type="text" class="form-control" placeholder="Nama lokasi" value="'+escapeHtml(lok.nama||'')+'" style="width:100%" onchange="updateDistKecilRow('+idx+',\'nama\',this.value)">';
         html += '<div class="num-input-wrap" style="width:130px"><button type="button" class="num-btn" onclick="distKecilNumStep('+idx+',-1)">-</button><input type="number" class="form-control" id="dk_jumlah_'+idx+'" value="'+(lok.jumlah||0)+'" min="0" onchange="updateDistKecilRow('+idx+',\'jumlah\',Number(this.value))"><button type="button" class="num-btn" onclick="distKecilNumStep('+idx+',1)">+</button></div>';
         html += '<select class="form-control" style="width:100px" onchange="updateDistKecilRow('+idx+',\'status\',this.value)"><option value="proses"'+(lok.status==='proses'?' selected':'')+'>Proses</option><option value="selesai"'+(lok.status==='selesai'?' selected':'')+'>Selesai</option></select>';
         html += '<button style="background:var(--maroon-light);color:var(--maroon);border:none;border-radius:6px;padding:8px 10px;font-size:12px;font-weight:700;cursor:pointer" onclick="removeDistKecilRow('+idx+')">&#x2715;</button>';
@@ -1986,6 +2002,42 @@ function collectCurrentFormData() {
     setIfPresent(state.distribusiKarkas, 'waktuSelesai', 'inp_distKarkasWSelesai', false);
   }
 
+  // Cap: no negative values for any numeric field
+  state.totalHewan = Math.max(0, state.totalHewan || 0);
+  if (state.transit) state.transit.kakiKepala = Math.max(0, state.transit.kakiKepala || 0);
+  if (state.karkas) state.karkas.total = Math.max(0, state.karkas.total || 0);
+  if (state.abf) state.abf.keluar = Math.max(0, state.abf.keluar || 0);
+  state.cacahDariAbf = Math.max(0, state.cacahDariAbf || 0);
+  if (state.packingKecil) state.packingKecil.total = Math.max(0, state.packingKecil.total || 0);
+  if (state.packingKarkas) { state.packingKarkas.domba = Math.max(0, state.packingKarkas.domba || 0); state.packingKarkas.sapi = Math.max(0, state.packingKarkas.sapi || 0); }
+  if (state.distribusiKarkas) { state.distribusiKarkas.domba = Math.max(0, state.distribusiKarkas.domba || 0); state.distribusiKarkas.sapi = Math.max(0, state.distribusiKarkas.sapi || 0); state.distribusiKarkas.selesaiDomba = Math.max(0, state.distribusiKarkas.selesaiDomba || 0); state.distribusiKarkas.selesaiSapi = Math.max(0, state.distribusiKarkas.selesaiSapi || 0); }
+
+  // Cap: kandang keluar total cannot exceed totalHewan
+  var totalH = state.totalHewan || 0;
+  if (state.kandang && totalH > 0) {
+    var totalKel = 0;
+    for (var ki = 0; ki < state.kandang.length; ki++) {
+      state.kandang[ki].keluar = Math.max(0, state.kandang[ki].keluar || 0);
+      totalKel += state.kandang[ki].keluar;
+    }
+    if (totalKel > totalH) {
+      var excess = totalKel - totalH;
+      for (var ki2 = state.kandang.length - 1; ki2 >= 0 && excess > 0; ki2--) {
+        var reduce = Math.min(state.kandang[ki2].keluar, excess);
+        state.kandang[ki2].keluar -= reduce;
+        excess -= reduce;
+      }
+      toast('Total keluar kandang melebihi target, dikurangi otomatis', 'info');
+    }
+  }
+
+  // Cap: sembelih no negative
+  if (state.sembelih) { for (var si = 0; si < state.sembelih.length; si++) state.sembelih[si].dipotong = Math.max(0, state.sembelih[si].dipotong || 0); }
+  // Cap: lane no negative
+  if (state.lane) { for (var li = 0; li < state.lane.length; li++) state.lane[li].total = Math.max(0, state.lane[li].total || 0); }
+  // Cap: cacah no negative
+  if (state.cacah) { for (var ci = 0; ci < state.cacah.length; ci++) state.cacah[ci].total = Math.max(0, state.cacah[ci].total || 0); }
+
   console.log('[COLLECT] day='+currentView+' totalHewan='+state.totalHewan+' kandang1='+((state.kandang&&state.kandang[0])?state.kandang[0].keluar:'-'));
 }
 
@@ -2113,6 +2165,7 @@ function saveMonitorWidgets() {
 function enterMonitorMode() {
   if (monitorMode) return;
   monitorMode = true;
+  monitorNeedsFullRender = true;
   loadMonitorWidgets();
   document.documentElement.classList.add('monitoring');
   document.body.classList.add('monitoring');
@@ -2305,9 +2358,22 @@ function mwDaySummary() {
 }
 
 var monitorTickBusy = false;
+var monitorNeedsFullRender = true;
 function monitorTick() {
-  renderMonitorDashboard();
+  var now = new Date();
+  var timeStr = now.toLocaleTimeString('id-ID',{timeZone:'Asia/Jakarta',hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  var clockEl = document.getElementById('monitorClock');
+  if (clockEl) clockEl.textContent = timeStr + ' WIB';
+  var dateEl = document.getElementById('monitorDate');
+  if (dateEl) dateEl.textContent = now.toLocaleDateString('id-ID',{timeZone:'Asia/Jakarta',weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  // Update inline clock widgets without full DOM rebuild
+  document.querySelectorAll('.mon-clock-big').forEach(function(el) { el.textContent = timeStr; });
+  if (monitorNeedsFullRender) {
+    monitorNeedsFullRender = false;
+    renderMonitorDashboard();
+  }
 }
+function markMonitorDirty() { monitorNeedsFullRender = true; }
 
 function renderMonitorDashboard() {
   var html = '';
@@ -2478,10 +2544,7 @@ function initSupabaseRealtime() {
     startPollingFallback();
     return;
   }
-  if (!supabaseClient) supabaseClient = supabase.createClient(
-    'https://weuyigniellckkiyxxlz.supabase.co',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndldXlpZ25pZWxsY2traXl4eGx6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4NTUxNTUsImV4cCI6MjA5NTQzMTE1NX0.y13osUe66LEJBti0Exaid-59VXdUQ2mCwbBGqB21TEo'
-  );
+  if (!supabaseClient) supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
 
   var _broadcastTimers = {};
   realtimeChannel = supabaseClient
@@ -2497,6 +2560,7 @@ function initSupabaseRealtime() {
         delete _broadcastTimers[key];
         console.log('[RT] Processing broadcast:', key);
 
+        markMonitorDirty();
         if (key === 'global-settings') {
           loadSettings().then(function() {
             var shouldDark = !!settings.darkMode;
@@ -2563,6 +2627,7 @@ function startPollingFallback() {
       var shouldDark = !!settings.darkMode;
       if (shouldDark !== document.body.classList.contains('dark')) document.body.classList.toggle('dark', shouldDark);
       applyTheme(loadTheme());
+      markMonitorDirty();
       renderCurrentPage();
     });
   }, 10000);
@@ -2701,11 +2766,11 @@ function exportExcel() {
     XLSX.utils.book_append_sheet(wb, styledSheet(summary,[{wch:22},{wch:14}]), 'Ringkasan');
 
     var kandangData = [['No','Kapasitas','Keluar','Status','Mulai','Selesai']];
-    (s.kandang||[]).forEach(function(k) { kandangData.push(['Kandang #'+k.no,k.total,k.keluar||0,statusLabel(k.status),k.waktuMulai||'-',k.waktuSelesai||'-']); });
+    (s.kandang||[]).forEach(function(k) { kandangData.push(['Kandang #'+k.no,k.total,k.keluar||0,statusLabel(kandangStatus(k)),k.waktuMulai||'-',k.waktuSelesai||'-']); });
     XLSX.utils.book_append_sheet(wb, styledSheet(kandangData,[{wch:14},{wch:10},{wch:8},{wch:10},{wch:12},{wch:12}]), 'Kandang');
 
     var sembData = [['No','Dipotong','Status','Mulai','Selesai']];
-    (s.sembelih||[]).forEach(function(sb) { sembData.push(['Lubang #'+sb.no,sb.dipotong||0,statusLabel(sb.status),sb.waktuMulai||'-',sb.waktuSelesai||'-']); });
+    (s.sembelih||[]).forEach(function(sb) { sembData.push(['Lubang #'+sb.no,sb.dipotong||0,statusLabel(sembelihStatus(sb)),sb.waktuMulai||'-',sb.waktuSelesai||'-']); });
     XLSX.utils.book_append_sheet(wb, styledSheet(sembData,[{wch:12},{wch:10},{wch:10},{wch:12},{wch:12}]), 'Penyembelihan');
 
     var kaletData = [['ID','Dikuliti','Status','Mulai','Selesai']];
@@ -2731,7 +2796,7 @@ function toast(msg, type) {
   var icons = {success:'✅',error:'❌',info:'ℹ️'};
   var el = document.createElement('div');
   el.className = 'toast ' + type;
-  el.innerHTML = '<span class="toast-icon">'+icons[type]+'</span><span>'+msg+'</span>';
+  el.innerHTML = '<span class="toast-icon">'+icons[type]+'</span><span>'+escapeHtml(msg)+'</span>';
   container.appendChild(el);
   setTimeout(function() {
     el.style.opacity = '0';
@@ -2765,7 +2830,7 @@ function setupEventListeners() {
     w.on = !w.on;
     tog.classList.toggle('on', w.on);
     saveMonitorWidgets();
-    renderMonitorDashboard();
+    monitorNeedsFullRender = true;
   });
 
   // Escape key for monitor

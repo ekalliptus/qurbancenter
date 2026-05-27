@@ -1,5 +1,33 @@
 import type { APIContext } from 'astro';
-import { getDayState, saveDayState, defaultDayState, supaBroadcast } from '../../lib/db';
+import { getDayState, saveDayState, defaultDayState, atomicIncrement, supaBroadcast } from '../../lib/db';
+
+const VALID_PATHS = new Set([
+  'totalHewan',
+  'transit.kakiKepala',
+  'karkas.total',
+  'abf.keluar',
+  'cacahDariAbf',
+  'packingKecil.total',
+  'packingKarkas.domba',
+  'packingKarkas.sapi',
+  'distribusiKarkas.domba',
+  'distribusiKarkas.sapi',
+  'distribusiKarkas.selesaiDomba',
+  'distribusiKarkas.selesaiSapi',
+]);
+
+const VALID_ARRAY_PATTERNS = [
+  /^kandang\.\d{1,2}\.keluar$/,
+  /^sembelih\.\d{1,2}\.dipotong$/,
+  /^lane\.\d\.total$/,
+  /^cacah\.\d\.total$/,
+  /^distribusiKecil\.lokasi\.\d{1,3}\.jumlah$/,
+];
+
+function isValidPath(path: string): boolean {
+  if (VALID_PATHS.has(path)) return true;
+  return VALID_ARRAY_PATTERNS.some(p => p.test(path));
+}
 
 function getNestedValue(obj: any, path: string[]): any {
   let cur = obj;
@@ -49,9 +77,31 @@ export async function POST({ request }: APIContext) {
         status: 400, headers: { 'Content-Type': 'application/json' },
       });
     }
+    if (!isValidPath(path)) {
+      return new Response(JSON.stringify({ error: 'Invalid path' }), {
+        status: 400, headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
-    const state = await getDayState(dayNum) || defaultDayState();
     const parts = path.split('.');
+    const stateId = 'day-' + dayNum;
+
+    // Try atomic increment (requires Supabase RPC function)
+    const atomic = await atomicIncrement(stateId, parts, delta);
+    if (atomic) {
+      if (atomic.error) {
+        return new Response(JSON.stringify({ error: atomic.error }), {
+          status: 400, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      await supaBroadcast(stateId);
+      return new Response(JSON.stringify(atomic), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Fallback: non-atomic read-modify-write (used until RPC function is created)
+    const state = await getDayState(dayNum) || defaultDayState();
     const current = getNestedValue(state, parts);
     const oldVal = typeof current === 'number' ? current : 0;
     let newVal = Math.max(0, oldVal + delta);
@@ -75,7 +125,7 @@ export async function POST({ request }: APIContext) {
 
     setNestedValue(state, parts, newVal);
     await saveDayState(dayNum, state);
-    await supaBroadcast('day-' + dayNum);
+    await supaBroadcast(stateId);
 
     return new Response(JSON.stringify({ ok: true, value: newVal }), {
       headers: { 'Content-Type': 'application/json' },

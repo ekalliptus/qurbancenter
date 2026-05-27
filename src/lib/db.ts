@@ -1,5 +1,5 @@
-const SUPABASE_URL = 'https://weuyigniellckkiyxxlz.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndldXlpZ25pZWxsY2traXl4eGx6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4NTUxNTUsImV4cCI6MjA5NTQzMTE1NX0.y13osUe66LEJBti0Exaid-59VXdUQ2mCwbBGqB21TEo';
+const SUPABASE_URL = import.meta.env.SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.SUPABASE_KEY;
 
 const headers = {
   'apikey': SUPABASE_KEY,
@@ -20,11 +20,15 @@ async function supaGet(id: string) {
 
 async function supaUpsert(id: string, data: unknown) {
   const body = JSON.stringify({ id, data, updated_at: new Date().toISOString() });
-  await fetch(`${SUPABASE_URL}/rest/v1/qurban_state`, {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/qurban_state`, {
     method: 'POST',
     headers: { ...headers, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
     body,
   });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Supabase upsert failed (${res.status}): ${text}`);
+  }
 }
 
 async function supaSelect(filter: string) {
@@ -36,7 +40,7 @@ async function supaSelect(filter: string) {
   return res.json();
 }
 
-// --- Legacy functions (kept for backward compat) ---
+// --- State functions ---
 
 export function defaultState() {
   return {
@@ -159,5 +163,27 @@ export async function supaBroadcast(key: string) {
         }],
       }),
     });
-  } catch {}
+  } catch (e) {
+    console.error('Broadcast failed:', e);
+  }
+}
+
+// --- Atomic increment (requires Supabase RPC function) ---
+
+export async function atomicIncrement(id: string, path: string[], delta: number): Promise<{ ok?: boolean; value?: number; capped?: boolean; error?: string } | null> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/atomic_update_field`, {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ p_id: id, p_path: path, p_delta: delta }),
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
 }

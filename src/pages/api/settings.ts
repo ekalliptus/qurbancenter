@@ -14,7 +14,12 @@ export async function GET() {
   }
 }
 
-export async function PATCH({ request }: APIContext) {
+export async function PATCH({ request, locals }: APIContext) {
+  if (locals.role !== 'admin') {
+    return new Response(JSON.stringify({ error: 'Admin only' }), {
+      status: 403, headers: { 'Content-Type': 'application/json' },
+    });
+  }
   try {
     const body = await request.json();
     if (!body || typeof body !== 'object') {

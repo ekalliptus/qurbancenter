@@ -1,9 +1,9 @@
-export const ADMIN_EMAIL = 'admin@alfatihah.com';
-export const ADMIN_PASSWORD = '#Admin2026';
-export const ADMIN_TOKEN = 'admin:qc_adm_alfatihah_2026';
-export const EDITOR_EMAIL = 'DB@alfatihah.com';
-export const EDITOR_PASSWORD = '#Santri99';
-export const EDITOR_TOKEN = 'editor:qc_ed_alfatihah_2026';
+export const ADMIN_EMAIL = import.meta.env.ADMIN_EMAIL;
+export const ADMIN_PASSWORD = import.meta.env.ADMIN_PASSWORD;
+export const ADMIN_TOKEN = import.meta.env.ADMIN_TOKEN;
+export const EDITOR_EMAIL = import.meta.env.EDITOR_EMAIL;
+export const EDITOR_PASSWORD = import.meta.env.EDITOR_PASSWORD;
+export const EDITOR_TOKEN = import.meta.env.EDITOR_TOKEN;
 export const VIEWER_TOKEN = 'viewer';
 export const COOKIE_NAME = 'qurban_auth';
 
