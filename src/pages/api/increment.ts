@@ -54,7 +54,25 @@ export async function POST({ request }: APIContext) {
     const parts = path.split('.');
     const current = getNestedValue(state, parts);
     const oldVal = typeof current === 'number' ? current : 0;
-    const newVal = Math.max(0, oldVal + delta);
+    let newVal = Math.max(0, oldVal + delta);
+
+    const totalHewan = (state as any).totalHewan || 0;
+    if (parts[0] === 'kandang' && parts[2] === 'keluar') {
+      const kandang = (state as any).kandang || [];
+      let totalKeluar = 0;
+      for (const k of kandang) totalKeluar += (k.keluar || 0);
+      const projected = totalKeluar - oldVal + newVal;
+      if (projected > totalHewan) {
+        newVal = Math.max(0, oldVal + (totalHewan - totalKeluar));
+      }
+    }
+
+    if (newVal === oldVal && delta !== 0) {
+      return new Response(JSON.stringify({ ok: true, value: oldVal, capped: true }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     setNestedValue(state, parts, newVal);
     await saveDayState(dayNum, state);
     await supaBroadcast('day-' + dayNum);

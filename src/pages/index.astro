@@ -1622,17 +1622,34 @@ function resolveFieldPath(id) {
 var _incrementBusy = false;
 var _incrementQueue = [];
 var _slowTimer = null;
+var _connectionLost = false;
 
 function showSlowOverlay() { document.getElementById('slowOverlay').classList.add('visible'); }
 function hideSlowOverlay() { document.getElementById('slowOverlay').classList.remove('visible'); }
 
-function _processIncrementQueue() {
-  if (_incrementBusy || _incrementQueue.length === 0) return;
-  _incrementBusy = true;
-  var job = _incrementQueue.shift();
-  _slowTimer = setTimeout(showSlowOverlay, 1000);
-  fetch('/api/increment', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({day:job.day, path:job.path, delta:job.delta})})
-    .then(function(r) { return r.json(); })
+function _softRefresh() {
+  loadAllStates().then(function() {
+    return loadSettings();
+  }).then(function() {
+    renderCurrentPage();
+  });
+}
+
+function _retryIncrement(job, attempt) {
+  var delay = Math.min(2000 * Math.pow(2, attempt), 15000);
+  var sub = document.querySelector('.slow-sub');
+  if (sub) sub.textContent = 'Mencoba ulang dalam ' + Math.round(delay/1000) + ' detik...';
+  setTimeout(function() {
+    if (sub) sub.textContent = 'Mencoba ulang...';
+    _doIncrement(job, attempt + 1);
+  }, delay);
+}
+
+function _doIncrement(job, attempt) {
+  var controller = new AbortController();
+  var timeout = setTimeout(function() { controller.abort(); }, 10000);
+  fetch('/api/increment', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({day:job.day, path:job.path, delta:job.delta}), signal:controller.signal})
+    .then(function(r) { clearTimeout(timeout); return r.json(); })
     .then(function(d) {
       if (d.ok) {
         _skipNextCollect = true;
@@ -1640,16 +1657,36 @@ function _processIncrementQueue() {
         if (el) el.value = d.value;
         var state = getState();
         if (state) setStatePath(state, job.path, d.value);
+        if (d.capped) toast('Sudah mencapai batas total target', 'info');
         setTimeout(function() { _skipNextCollect = false; }, 50);
       }
+      _onIncrementDone();
     })
-    .catch(function() {})
-    .then(function() {
-      clearTimeout(_slowTimer);
-      hideSlowOverlay();
-      _incrementBusy = false;
-      _processIncrementQueue();
+    .catch(function() {
+      _connectionLost = true;
+      showSlowOverlay();
+      var sub = document.querySelector('.slow-sub');
+      if (sub) sub.textContent = 'Tidak ada koneksi, menunggu...';
+      _retryIncrement(job, attempt);
     });
+}
+
+function _onIncrementDone() {
+  clearTimeout(_slowTimer);
+  var wasLost = _connectionLost;
+  _connectionLost = false;
+  hideSlowOverlay();
+  _incrementBusy = false;
+  if (wasLost) _softRefresh();
+  _processIncrementQueue();
+}
+
+function _processIncrementQueue() {
+  if (_incrementBusy || _incrementQueue.length === 0) return;
+  _incrementBusy = true;
+  var job = _incrementQueue.shift();
+  _slowTimer = setTimeout(showSlowOverlay, 1000);
+  _doIncrement(job, 0);
 }
 
 function numStep(id, dir) {
