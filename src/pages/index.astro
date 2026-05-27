@@ -123,6 +123,13 @@ input,select,textarea{font-family:inherit}
 /* Save indicator */
 .save-indicator{position:fixed;top:12px;right:24px;z-index:200;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;color:var(--blue);display:none;align-items:center;gap:8px;box-shadow:var(--shadow-md);animation:fadeIn .2s ease}
 .save-indicator.visible{display:flex}
+.slow-overlay{position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;backdrop-filter:blur(2px)}
+.slow-overlay.visible{display:flex}
+.slow-box{background:var(--surface);border-radius:var(--radius);padding:28px 36px;text-align:center;box-shadow:var(--shadow-lg);border:1px solid var(--border)}
+.slow-box .slow-spinner{width:28px;height:28px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 14px}
+.slow-box .slow-text{font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:4px}
+.slow-box .slow-sub{font-size:12px;color:var(--text-muted)}
+@keyframes spin{to{transform:rotate(360deg)}}
 .save-dot{width:6px;height:6px;border-radius:50%;background:var(--blue);animation:pulse 1s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 
@@ -547,6 +554,9 @@ body[data-role="editor"] .admin-only{display:none!important}
 </style>
 </head>
 <body data-role={role}>
+
+<!-- Slow Network Overlay -->
+<div class="slow-overlay" id="slowOverlay"><div class="slow-box"><div class="slow-spinner"></div><div class="slow-text">Menunggu koneksi...</div><div class="slow-sub">Jaringan lambat, mohon tunggu</div></div></div>
 
 <!-- Toast Container -->
 <div class="toast-container" id="toastContainer"></div>
@@ -1609,6 +1619,39 @@ function resolveFieldPath(id) {
   if (m) return 'cacah.' + (parseInt(m[1]) - 1) + '.total';
   return null;
 }
+var _incrementBusy = false;
+var _incrementQueue = [];
+var _slowTimer = null;
+
+function showSlowOverlay() { document.getElementById('slowOverlay').classList.add('visible'); }
+function hideSlowOverlay() { document.getElementById('slowOverlay').classList.remove('visible'); }
+
+function _processIncrementQueue() {
+  if (_incrementBusy || _incrementQueue.length === 0) return;
+  _incrementBusy = true;
+  var job = _incrementQueue.shift();
+  _slowTimer = setTimeout(showSlowOverlay, 1000);
+  fetch('/api/increment', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({day:job.day, path:job.path, delta:job.delta})})
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok) {
+        _skipNextCollect = true;
+        var el = document.getElementById(job.id);
+        if (el) el.value = d.value;
+        var state = getState();
+        if (state) setStatePath(state, job.path, d.value);
+        setTimeout(function() { _skipNextCollect = false; }, 50);
+      }
+    })
+    .catch(function() {})
+    .then(function() {
+      clearTimeout(_slowTimer);
+      hideSlowOverlay();
+      _incrementBusy = false;
+      _processIncrementQueue();
+    });
+}
+
 function numStep(id, dir) {
   var el = document.getElementById(id);
   if (!el) return;
@@ -1618,10 +1661,8 @@ function numStep(id, dir) {
   if (path) {
     _skipNextCollect = true;
     setTimeout(function() { _skipNextCollect = false; }, 50);
-    fetch('/api/increment', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({day:currentView, path:path, delta:dir})})
-      .then(function(r) { return r.json(); })
-      .then(function(d) { if (d.ok) { _skipNextCollect = true; if (el) el.value = d.value; var state = getState(); if (state) setStatePath(state, path, d.value); setTimeout(function() { _skipNextCollect = false; }, 50); } })
-      .catch(function() {});
+    _incrementQueue.push({id:id, day:currentView, path:path, delta:dir});
+    _processIncrementQueue();
   } else {
     el.dispatchEvent(new Event('input', {bubbles:true}));
   }
@@ -1662,10 +1703,10 @@ function distKecilNumStep(idx, dir) {
   var el = document.getElementById('dk_jumlah_'+idx); if (!el) return;
   var v = parseInt(el.value)||0; el.value = Math.max(0, v+dir);
   var path = 'distribusiKecil.lokasi.' + idx + '.jumlah';
-  fetch('/api/increment', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({day:currentView, path:path, delta:dir})})
-    .then(function(r) { return r.json(); })
-    .then(function(d) { if (d.ok && el) { el.value = d.value; var state = getState(); if (state && state.distribusiKecil && state.distribusiKecil.lokasi && state.distribusiKecil.lokasi[idx]) state.distribusiKecil.lokasi[idx].jumlah = d.value; } })
-    .catch(function() { updateDistKecilRow(idx, 'jumlah', Math.max(0, v+dir)); });
+  _skipNextCollect = true;
+  setTimeout(function() { _skipNextCollect = false; }, 50);
+  _incrementQueue.push({id:'dk_jumlah_'+idx, day:currentView, path:path, delta:dir});
+  _processIncrementQueue();
 }
 function fgSelect(label,id,current) {
   return '<div class="form-group"><label>'+label+'</label><select class="form-control" id="'+id+'">'+statusOpts(current)+'</select></div>';
