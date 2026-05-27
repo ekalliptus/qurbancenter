@@ -831,8 +831,16 @@ function switchView(view) {
   history.replaceState(null, '', url);
   document.getElementById('configBtn').style.display = view === 'all' ? 'none' : '';
   renderSidebar();
+  // Render immediately with cached data for instant feedback
   renderCurrentPage();
   updateHeaderTitle();
+  // Force fresh data from server to ensure sync across views/devices
+  if (!isSaving && !pendingSave && !saveTimeout) {
+    loadAllStates().then(function() {
+      renderCurrentPage();
+      updateHeaderTitle();
+    });
+  }
 }
 
 function navigate(page) {
@@ -1030,17 +1038,25 @@ function setupPageListeners() {
 // ALL DAY DASHBOARD
 // ================================================================
 function renderAllDayDashboard() {
-  var totalTarget = 0, totalKeluar = 0, totalDipotong = 0, totalDikuliti = 0, totalDicacah = 0;
-  var totalDistKecil = 0, totalDistKarkas = 0;
+  var totalTarget=0, totalKeluar=0, totalDipotong=0, totalDikuliti=0, totalDicacah=0;
+  var totalKarkas=0, totalAbf=0, totalPackKecil=0, totalPackKarkas=0;
+  var totalDistKecil=0, totalDistKarkas=0;
   for (var i = 1; i <= 4; i++) {
     var s = dayStates[i];
     if (!s) continue;
     totalTarget += s.totalHewan || 0;
-    totalKeluar += totalKeluarDay(s);
-    totalDipotong += totalDipotongDay(s);
-    totalDikuliti += totalDikulitiDay(s);
+    var kel = totalKeluarDay(s);
+    var dip = Math.min(totalDipotongDay(s), kel);
+    var kul = Math.min(totalDikulitiDay(s), dip);
+    totalKeluar += kel;
+    totalDipotong += dip;
+    totalDikuliti += kul;
     totalDicacah += totalDicacahDay(s) + (s.cacahDariAbf || 0);
-    totalDistKecil += s.distribusiKecil ? s.distribusiKecil.selesai || 0 : 0;
+    totalKarkas += s.karkas ? s.karkas.total || 0 : 0;
+    totalAbf += s.abf ? s.abf.keluar || 0 : 0;
+    totalPackKecil += s.packingKecil ? s.packingKecil.total || 0 : 0;
+    totalPackKarkas += s.packingKarkas ? (s.packingKarkas.domba||0)+(s.packingKarkas.sapi||0) : 0;
+    totalDistKecil += s.distribusiKecil && s.distribusiKecil.lokasi ? s.distribusiKecil.lokasi.filter(function(x){return x.status==='selesai'}).length : 0;
     totalDistKarkas += s.distribusiKarkas ? (s.distribusiKarkas.selesaiDomba||0)+(s.distribusiKarkas.selesaiSapi||0) : 0;
   }
   var totalDist = totalDistKecil + totalDistKarkas;
@@ -1057,8 +1073,13 @@ function renderAllDayDashboard() {
   html += statCardHtml('maroon','Penyembelihan',totalDipotong,pct(totalDipotong,totalKeluar||1)+'% dari keluar','maroon');
   html += statCardHtml('maroon','Belum Tersembelih',Math.max(0,totalTarget-totalDipotong),'Sisa','maroon');
   html += statCardHtml('purple','Pengulitan',totalDikuliti,pct(totalDikuliti,totalDipotong||1)+'% dari sembelih','purple');
-  html += statCardHtml('amber','Pencacahan',totalDicacah,pct(totalDicacah,totalDikuliti||1)+'% dari kuliti','amber');
-  html += statCardHtml('blue','Distribusi',totalDist,pct(totalDist,totalTarget)+'% dari total','blue');
+  html += statCardHtml('amber','Karkas',totalKarkas,pct(totalKarkas,totalDikuliti||1)+'% dari kuliti','amber');
+  html += statCardHtml('blue','ABF Keluar',totalAbf,pct(totalAbf,totalKarkas||1)+'% dari karkas','blue');
+  html += statCardHtml('purple','Pencacahan',totalDicacah,pct(totalDicacah,totalDikuliti||1)+'% dari kuliti','purple');
+  html += statCardHtml('blue','Packing Kecil',totalPackKecil,pct(totalPackKecil,totalDicacah||1)+'% dari cacah','blue');
+  html += statCardHtml('amber','Packing Karkas',totalPackKarkas,pct(totalPackKarkas,totalKarkas||1)+'% dari karkas','amber');
+  html += statCardHtml('green','Dist. Kecil',totalDistKecil,pct(totalDistKecil,totalPackKecil||1)+'% dari packing','green');
+  html += statCardHtml('green','Dist. Karkas',totalDistKarkas,pct(totalDistKarkas,totalPackKarkas||1)+'% dari packing','green');
   html += '</div>';
 
   // Day summary cards
@@ -1081,15 +1102,8 @@ function renderAllDayDashboard() {
   }
   html += '</div>';
 
-  // Overall pipeline
-  var allPipeline = {total:totalTarget,keluar:totalKeluar,dipotong:totalDipotong,dikuliti:totalDikuliti,karkasTotal:0,abfKeluar:0,dicacah:totalDicacah,packKecil:0,packKarkas:0,distKecil:totalDistKecil,distKarkas:totalDistKarkas};
-  for (var i = 1; i <= 4; i++) {
-    var s = dayStates[i]; if (!s) continue;
-    allPipeline.karkasTotal += s.karkas ? s.karkas.total || 0 : 0;
-    allPipeline.abfKeluar += s.abf ? s.abf.keluar || 0 : 0;
-    allPipeline.packKecil += s.packingKecil ? s.packingKecil.total || 0 : 0;
-    allPipeline.packKarkas += s.packingKarkas ? (s.packingKarkas.domba||0)+(s.packingKarkas.sapi||0) : 0;
-  }
+  // Overall pipeline - uses pre-computed values from aggregation loop above
+  var allPipeline = {total:totalTarget,keluar:totalKeluar,dipotong:totalDipotong,dikuliti:totalDikuliti,karkasTotal:totalKarkas,abfKeluar:totalAbf,dicacah:totalDicacah,packKecil:totalPackKecil,packKarkas:totalPackKarkas,distKecil:totalDistKecil,distKarkas:totalDistKarkas};
   html += '<div class="card" style="margin-top:4px"><div style="font-weight:700;font-size:15px;margin-bottom:16px">Pipeline Keseluruhan</div>';
   html += renderPipelineHtml(allPipeline);
   html += '</div>';
