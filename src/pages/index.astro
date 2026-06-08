@@ -2099,7 +2099,7 @@ function renderAkun() {
   html += '<div class="card" style="max-width:760px;margin-bottom:20px"><div style="font-weight:700;font-size:15px;margin-bottom:16px">Tambah Akun</div>';
   html += '<div class="form-grid">';
   html += '<div class="form-group"><label>Email</label><input class="form-control" id="newUserEmail" type="email" placeholder="email@domain.com"></div>';
-  html += '<div class="form-group"><label>Password</label><input class="form-control" id="newUserPass" type="text" placeholder="Min. 8 karakter"></div>';
+  html += '<div class="form-group"><label>Password</label><input class="form-control" id="newUserPass" type="password" placeholder="Min. 8 karakter"></div>';
   html += '<div class="form-group"><label>Role</label><select class="form-control" id="newUserRole"><option value="editor">Editor</option><option value="admin">Admin</option><option value="viewer">Viewer</option></select></div>';
   html += '</div><button class="btn btn-primary btn-sm" onclick="createAccount()">Tambah</button></div>';
   html += '<div class="card" style="max-width:760px"><div style="font-weight:700;font-size:15px;margin-bottom:16px">Daftar Akun</div><div id="userListBody">Memuat...</div></div>';
@@ -2118,12 +2118,12 @@ function loadUsers() {
     d.users.forEach(function(u){
       h += '<tr>';
       h += '<td style="padding:10px 14px;border-bottom:1px solid var(--border-light);font-size:13px">'+escapeHtml(u.email)+'</td>';
-      h += '<td style="padding:10px 14px;border-bottom:1px solid var(--border-light)"><span class="role-badge '+u.role+'">'+u.role+'</span></td>';
+      h += '<td style="padding:10px 14px;border-bottom:1px solid var(--border-light)"><span class="role-badge '+escapeHtml(u.role)+'">'+escapeHtml(u.role)+'</span></td>';
       h += '<td style="padding:10px 14px;border-bottom:1px solid var(--border-light);font-size:12px">'+(u.active?'Aktif':'Nonaktif')+'</td>';
       h += '<td style="padding:10px 14px;border-bottom:1px solid var(--border-light);display:flex;gap:6px;flex-wrap:wrap">';
       h += '<button class="btn btn-ghost btn-sm" onclick="changePassword(\''+u.id+'\')">Password</button>';
       h += '<button class="btn btn-ghost btn-sm" onclick="toggleActive(\''+u.id+'\','+(!u.active)+')">'+(u.active?'Nonaktifkan':'Aktifkan')+'</button>';
-      h += '<button class="btn btn-danger btn-sm" onclick="deleteAccount(\''+u.id+'\',\''+escapeHtml(u.email)+'\')">Hapus</button>';
+      h += '<button class="btn btn-danger btn-sm" onclick="deleteAccount(\''+u.id+'\')">Hapus</button>';
       h += '</td></tr>';
     });
     h += '</tbody></table></div>';
@@ -2146,19 +2146,20 @@ function createAccount() {
 function changePassword(id) {
   var pw = prompt('Password baru (min. 8 karakter):');
   if (!pw) return;
+  if (pw.length < 8) { toast('Password minimal 8 karakter','error'); return; }
   fetch('/api/users',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,password:pw})})
-    .then(function(r){return r.json();}).then(function(d){ toast(d.ok?'Password diubah':(d.error||'Gagal'), d.ok?'success':'error'); });
+    .then(function(r){return r.json();}).then(function(d){ toast(d.ok?'Password diubah':(d.error||'Gagal'), d.ok?'success':'error'); }).catch(function(){ toast('Gagal koneksi','error'); });
 }
 
 function toggleActive(id, active) {
   fetch('/api/users',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,active:active})})
-    .then(function(r){return r.json();}).then(function(d){ if(d.ok){toast('Status diubah','success');loadUsers();} else toast(d.error||'Gagal','error'); });
+    .then(function(r){return r.json();}).then(function(d){ if(d.ok){toast('Status diubah','success');loadUsers();} else toast(d.error||'Gagal','error'); }).catch(function(){ toast('Gagal koneksi','error'); });
 }
 
-function deleteAccount(id, email) {
-  if (!confirm('Hapus akun '+email+'?')) return;
+function deleteAccount(id) {
+  if (!confirm('Hapus akun ini?')) return;
   fetch('/api/users',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})})
-    .then(function(r){return r.json();}).then(function(d){ if(d.ok){toast('Akun dihapus','success');loadUsers();} else toast(d.error||'Gagal','error'); });
+    .then(function(r){return r.json();}).then(function(d){ if(d.ok){toast('Akun dihapus','success');loadUsers();} else toast(d.error||'Gagal','error'); }).catch(function(){ toast('Gagal koneksi','error'); });
 }
 
 // ================================================================
