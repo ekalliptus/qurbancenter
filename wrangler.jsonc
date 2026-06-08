@@ -1,17 +1,17 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "qurbancenter",
+  "main": "@astrojs/cloudflare/entrypoints/server",
   "compatibility_date": "2026-05-19",
-  "observability": {
-    "enabled": true
-  },
-  "main": "dist/_worker.js/index.js",
   "compatibility_flags": [
     "global_fetch_strictly_public",
     "nodejs_compat"
   ],
+  "observability": {
+    "enabled": true
+  },
   "assets": {
     "binding": "ASSETS",
-    "directory": "dist"
+    "directory": "./dist"
   }
 }

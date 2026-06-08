@@ -1,9 +1,10 @@
 ---
 import { COOKIE_NAME, getRole } from '../lib/auth';
+import { getEnv } from '../lib/env';
 const auth = Astro.cookies.get(COOKIE_NAME)?.value;
 const role = getRole(auth) || 'viewer';
-const supabaseUrl = import.meta.env.SUPABASE_URL;
-const supabaseKey = import.meta.env.SUPABASE_KEY;
+const supabaseUrl = getEnv('SUPABASE_URL');
+const supabaseKey = getEnv('SUPABASE_KEY');
 ---
 <html lang="id">
 <head>

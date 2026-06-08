@@ -1,17 +1,15 @@
-const SUPABASE_URL = import.meta.env.SUPABASE_URL;
-const SUPABASE_KEY = import.meta.env.SUPABASE_KEY;
+import { getEnv } from './env';
 
-const headers = {
-  'apikey': SUPABASE_KEY,
-  'Authorization': `Bearer ${SUPABASE_KEY}`,
-  'Content-Type': 'application/json',
-  'Prefer': 'return=minimal',
-};
+// Secrets read at request time from the Cloudflare Workers runtime env.
+function supaConfig() {
+  return { url: getEnv('SUPABASE_URL'), key: getEnv('SUPABASE_KEY') };
+}
 
 async function supaGet(id: string) {
+  const { url, key } = supaConfig();
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/qurban_state?id=eq.${encodeURIComponent(id)}&select=data`,
-    { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+    `${url}/rest/v1/qurban_state?id=eq.${encodeURIComponent(id)}&select=data`,
+    { headers: { apikey: key, Authorization: `Bearer ${key}` } }
   );
   if (!res.ok) return null;
   const rows = await res.json();
@@ -19,10 +17,16 @@ async function supaGet(id: string) {
 }
 
 async function supaUpsert(id: string, data: unknown) {
+  const { url, key } = supaConfig();
   const body = JSON.stringify({ id, data, updated_at: new Date().toISOString() });
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/qurban_state`, {
+  const res = await fetch(`${url}/rest/v1/qurban_state`, {
     method: 'POST',
-    headers: { ...headers, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'resolution=merge-duplicates,return=minimal',
+    },
     body,
   });
   if (!res.ok) {
@@ -32,9 +36,10 @@ async function supaUpsert(id: string, data: unknown) {
 }
 
 async function supaSelect(filter: string) {
+  const { url, key } = supaConfig();
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/qurban_state?${filter}&select=id,data&order=id`,
-    { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+    `${url}/rest/v1/qurban_state?${filter}&select=id,data&order=id`,
+    { headers: { apikey: key, Authorization: `Bearer ${key}` } }
   );
   if (!res.ok) return [];
   return res.json();
@@ -148,11 +153,12 @@ export async function saveGlobalSettings(data: unknown) { await supaUpsert('glob
 
 export async function supaBroadcast(key: string) {
   try {
-    await fetch(`${SUPABASE_URL}/realtime/v1/api/broadcast`, {
+    const { url, key: apiKey } = supaConfig();
+    await fetch(`${url}/realtime/v1/api/broadcast`, {
       method: 'POST',
       headers: {
-        'apikey': SUPABASE_KEY,
-        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'apikey': apiKey,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -172,11 +178,12 @@ export async function supaBroadcast(key: string) {
 
 export async function atomicIncrement(id: string, path: string[], delta: number): Promise<{ ok?: boolean; value?: number; capped?: boolean; error?: string } | null> {
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/atomic_update_field`, {
+    const { url, key } = supaConfig();
+    const res = await fetch(`${url}/rest/v1/rpc/atomic_update_field`, {
       method: 'POST',
       headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
+        apikey: key,
+        Authorization: `Bearer ${key}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ p_id: id, p_path: path, p_delta: delta }),

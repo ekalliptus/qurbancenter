@@ -1,11 +1,11 @@
 import type { APIContext } from 'astro';
 import { getDayState, defaultDayState } from '../../lib/db';
-
-const API_KEY = import.meta.env.PUBLIC_API_KEY;
+import { getEnv } from '../../lib/env';
 
 export async function GET({ url }: APIContext) {
+  const API_KEY = getEnv('PUBLIC_API_KEY');
   const key = url.searchParams.get('key');
-  if (key !== API_KEY) {
+  if (!API_KEY || key !== API_KEY) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

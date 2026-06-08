@@ -1,5 +1,5 @@
 import type { APIContext } from 'astro';
-import { ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_TOKEN, EDITOR_EMAIL, EDITOR_PASSWORD, EDITOR_TOKEN, VIEWER_TOKEN, COOKIE_NAME } from '../../lib/auth';
+import { getAuthConfig, VIEWER_TOKEN, COOKIE_NAME } from '../../lib/auth';
 
 export async function POST({ request }: APIContext) {
   const body = await request.json();
@@ -14,15 +14,17 @@ export async function POST({ request }: APIContext) {
     });
   }
 
-  if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
+  const cfg = getAuthConfig();
+
+  if (cfg.adminEmail && email === cfg.adminEmail && password === cfg.adminPassword) {
     return new Response(JSON.stringify({ ok: true, role: 'admin' }), {
-      headers: { 'Content-Type': 'application/json', 'Set-Cookie': `${COOKIE_NAME}=${ADMIN_TOKEN}; ${cookieOpts}` },
+      headers: { 'Content-Type': 'application/json', 'Set-Cookie': `${COOKIE_NAME}=${cfg.adminToken}; ${cookieOpts}` },
     });
   }
 
-  if (email === EDITOR_EMAIL && password === EDITOR_PASSWORD) {
+  if (cfg.editorEmail && email === cfg.editorEmail && password === cfg.editorPassword) {
     return new Response(JSON.stringify({ ok: true, role: 'editor' }), {
-      headers: { 'Content-Type': 'application/json', 'Set-Cookie': `${COOKIE_NAME}=${EDITOR_TOKEN}; ${cookieOpts}` },
+      headers: { 'Content-Type': 'application/json', 'Set-Cookie': `${COOKIE_NAME}=${cfg.editorToken}; ${cookieOpts}` },
     });
   }
 
