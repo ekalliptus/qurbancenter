@@ -1,9 +1,3 @@
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=changeme
-ADMIN_TOKEN=admin:your_admin_token_here
-EDITOR_EMAIL=editor@example.com
-EDITOR_PASSWORD=changeme
-EDITOR_TOKEN=editor:your_editor_token_here
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_KEY=your_supabase_service_role_key
