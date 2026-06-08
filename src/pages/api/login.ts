@@ -37,11 +37,10 @@ export async function POST({ request }: APIContext) {
   });
 }
 
-export async function DELETE({ request }: APIContext) {
+export async function DELETE({ request, cookies }: APIContext) {
   const secure = request.url.startsWith('https');
-  const cookie = request.headers.get('cookie') || '';
-  const m = cookie.match(new RegExp(`${COOKIE_NAME}=([^;]+)`));
-  if (m && m[1] !== VIEWER_TOKEN) await deleteSession(m[1]);
+  const token = cookies.get(COOKIE_NAME)?.value;
+  if (token && token !== VIEWER_TOKEN) await deleteSession(token);
   return new Response(JSON.stringify({ ok: true }), {
     headers: {
       'Content-Type': 'application/json',

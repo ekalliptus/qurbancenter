@@ -25,7 +25,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     role = session ? session.role : null;
   }
 
-  if (!role) return context.redirect('/login');
+  if (!role) return applySecurityHeaders(context.redirect('/login'), pathname);
 
   if (context.request.method !== 'GET') {
     const origin = context.request.headers.get('origin');
