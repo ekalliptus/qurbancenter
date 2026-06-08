@@ -63,7 +63,20 @@ export async function updateUser(id: string, patch: { password?: string; role?: 
     body: JSON.stringify(body),
   });
   if (!res.ok) return { ok: false, error: `DB error ${res.status}` };
+  // Revoke existing sessions when role/active changes — the session row holds a
+  // denormalized role, so a live cookie would otherwise keep stale privileges
+  // (or access after deactivation) until expiry. Force re-login.
+  if (patch.role !== undefined || patch.active !== undefined) {
+    await deleteUserSessions(id);
+  }
   return { ok: true };
+}
+
+async function deleteUserSessions(userId: string): Promise<void> {
+  const { url } = cfg();
+  await fetch(`${url}/rest/v1/qurban_sessions?user_id=eq.${encodeURIComponent(userId)}`, {
+    method: 'DELETE', headers: { ...headers(), Prefer: 'return=minimal' },
+  }).catch(() => {});
 }
 
 export async function deleteUser(id: string): Promise<{ ok: boolean; error?: string }> {
