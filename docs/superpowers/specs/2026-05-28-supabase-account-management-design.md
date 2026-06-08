@@ -62,9 +62,18 @@ alter table qurban_sessions enable row level security;
 -- bisa akses (service_role bypass RLS by design).
 ```
 
-`qurban_state` TIDAK diubah RLS-nya (tetap dapat diakses anon untuk Realtime).
-Catatan: mengamankan `qurban_state` adalah pekerjaan terpisah (lihat
-"Out of Scope").
+**`qurban_state` JUGA diamankan** (scope diperluas atas permintaan user):
+```sql
+alter table qurban_state enable row level security;
+-- TANPA policy anon → anon key tidak bisa baca/tulis qurban_state langsung.
+```
+Aman karena: (1) client TIDAK pernah baca qurban_state langsung — semua data
+lewat `/api/*` (server, service_role). (2) Realtime app pakai **public
+broadcast channel** (`qurban-sync`, tanpa `private:true`) yang TERPISAH dari
+RLS tabel — broadcast tetap jalan dengan anon key meski tabel terkunci.
+
+Setelah ini, anon key yang terlihat di browser **tidak berguna** untuk
+akses data (hanya tersisa untuk subscribe broadcast channel).
 
 ### Environment Variables
 
@@ -105,6 +114,13 @@ PBKDF2 native dan didukung penuh.
 - (opsional) `purgeExpiredSessions()` — best-effort saat login
 
 Semua fetch ke Supabase REST pakai `SUPABASE_SERVICE_KEY`.
+
+### 2b. `src/lib/db.ts` (diubah) — pindah ke service_role
+Karena `qurban_state` kini RLS-locked, SEMUA akses data server (`supaGet`,
+`supaUpsert`, `supaSelect`, `atomicIncrement`) harus pakai
+`SUPABASE_SERVICE_KEY`, bukan anon key. `supaConfig()` diubah untuk membaca
+service key. `supaBroadcast` tetap berfungsi (broadcast endpoint). Anon key
+TIDAK lagi dipakai server — hanya client (realtime subscribe).
 
 ### 3. `src/lib/auth.ts` (diubah)
 - Hapus `getAuthConfig()` dan konstanta env akun.
@@ -193,15 +209,17 @@ mau tambah user manual lewat Supabase dashboard.
 7. `/api/users` tanpa admin → 403; dengan admin → CRUD jalan.
 8. Tambah user baru via UI → bisa login.
 9. Hapus user → tidak bisa login lagi.
-10. **Anon key TIDAK bisa baca qurban_users** (curl dengan anon key → kosong/
-    error setelah RLS aktif). Ini test keamanan utama.
-11. Tidak bisa hapus admin terakhir / diri sendiri.
+10. **Anon key TIDAK bisa baca qurban_users/qurban_sessions** (curl dengan anon
+    key → kosong/error setelah RLS aktif). Test keamanan utama.
+11. **Anon key TIDAK bisa baca qurban_state** (curl anon → kosong/error).
+12. **App tetap berfungsi penuh** lewat /api/* (server pakai service_role):
+    load data, increment, save, login, realtime broadcast tetap jalan.
+13. Tidak bisa hapus admin terakhir / diri sendiri.
 
 ## Out of Scope (sekarang)
 
-- Mengaktifkan RLS pada `qurban_state` (anon masih bisa baca data operasional;
-  pekerjaan terpisah, perlu pertimbangan realtime).
-- Rotasi anon key / service_role key.
+- Rotasi anon key / service_role key (service_role key sempat ditempel di chat;
+  disarankan rotate setelah verifikasi).
 - Password reset via email, 2FA, lockout brute-force (bisa ditambah nanti;
   untuk 14 user internal, YAGNI dulu).
 - Audit log perubahan akun.
