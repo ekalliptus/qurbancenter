@@ -1,10 +1,10 @@
 ---
-import { COOKIE_NAME, getRole } from '../lib/auth';
-
-const auth = Astro.cookies.get(COOKIE_NAME)?.value;
-if (getRole(auth)) {
-  return Astro.redirect('/');
-}
+import { COOKIE_NAME, VIEWER_TOKEN } from '../lib/auth';
+import { getSession } from '../lib/users';
+const token = Astro.cookies.get(COOKIE_NAME)?.value;
+let loggedIn = token === VIEWER_TOKEN;
+if (!loggedIn && token) loggedIn = !!(await getSession(token));
+if (loggedIn) return Astro.redirect('/');
 ---
 <html lang="id">
 <head>
