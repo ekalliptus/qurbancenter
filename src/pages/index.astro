@@ -1,8 +1,13 @@
 ---
-import { COOKIE_NAME, getRole } from '../lib/auth';
+import { COOKIE_NAME, VIEWER_TOKEN } from '../lib/auth';
+import { getSession } from '../lib/users';
 import { getEnv } from '../lib/env';
-const auth = Astro.cookies.get(COOKIE_NAME)?.value;
-const role = getRole(auth) || 'viewer';
+const token = Astro.cookies.get(COOKIE_NAME)?.value;
+let role: 'admin' | 'editor' | 'viewer' = 'viewer';
+if (token && token !== VIEWER_TOKEN) {
+  const session = await getSession(token);
+  if (session) role = session.role;
+}
 const supabaseUrl = getEnv('SUPABASE_URL');
 const supabaseKey = getEnv('SUPABASE_KEY');
 ---
