@@ -6,4 +6,5 @@ EDITOR_PASSWORD=changeme
 EDITOR_TOKEN=editor:your_editor_token_here
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_KEY=your_supabase_service_role_key
 PUBLIC_API_KEY=your_public_api_key

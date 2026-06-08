@@ -1,8 +1,10 @@
 import { getEnv } from './env';
 
 // Secrets read at request time from the Cloudflare Workers runtime env.
+// Uses the service_role key: qurban_state is RLS-locked, so the anon key
+// (browser-visible) can no longer read/write it. Server access goes here.
 function supaConfig() {
-  return { url: getEnv('SUPABASE_URL'), key: getEnv('SUPABASE_KEY') };
+  return { url: getEnv('SUPABASE_URL'), key: getEnv('SUPABASE_SERVICE_KEY') };
 }
 
 async function supaGet(id: string) {
