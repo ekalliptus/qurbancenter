@@ -15,7 +15,7 @@ function headers() {
 export async function findUserByEmail(email: string): Promise<(UserRow & { password_hash: string }) | null> {
   const { url } = cfg();
   const res = await fetch(
-    `${url}/rest/v1/qurban_users?email=eq.${encodeURIComponent(email)}&active=eq.true&select=*`,
+    `${url}/rest/v1/qurban_users?email=eq.${encodeURIComponent(email)}&active=eq.true&select=id,email,role,active,created_at,password_hash`,
     { headers: headers() }
   );
   if (!res.ok) return null;
