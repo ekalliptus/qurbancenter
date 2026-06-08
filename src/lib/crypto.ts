@@ -30,22 +30,30 @@ async function pbkdf2(password: string, salt: Uint8Array): Promise<ArrayBuffer> 
 }
 
 export async function hashPassword(password: string): Promise<string> {
+  if (!password) throw new Error('password must not be empty');
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const derived = await pbkdf2(password, salt);
   return `${toB64(salt.buffer)}:${toB64(derived)}`;
 }
 
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
-  const [saltB64, hashB64] = stored.split(':');
+  const colonIdx = stored.indexOf(':');
+  if (colonIdx === -1) return false;
+  const saltB64 = stored.slice(0, colonIdx);
+  const hashB64 = stored.slice(colonIdx + 1);
   if (!saltB64 || !hashB64) return false;
-  const salt = fromB64(saltB64);
-  const derived = await pbkdf2(password, salt);
-  const a = new Uint8Array(derived);
-  const b = fromB64(hashB64);
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
-  return diff === 0; // timing-safe compare
+  try {
+    const salt = fromB64(saltB64);
+    const derived = await pbkdf2(password, salt);
+    const a = new Uint8Array(derived);
+    const b = fromB64(hashB64);
+    if (a.length !== b.length) return false;
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+    return diff === 0; // timing-safe compare
+  } catch {
+    return false;
+  }
 }
 
 export function generateToken(): string {
