@@ -13,7 +13,7 @@ function applySecurityHeaders(res: Response, pathname: string): Response {
 export const onRequest = defineMiddleware(async (context, next) => {
   const { pathname } = context.url;
 
-  if (pathname === '/login' || pathname === '/api/login' || pathname === '/api/public-state') {
+  if (pathname === '/login' || pathname === '/api/login' || pathname === '/api/public-state' || pathname === '/api/health') {
     return applySecurityHeaders(await next(), pathname);
   }
 
