@@ -1,6 +1,6 @@
-// Usage: node scripts/seed-users.mjs
-// Reads SUPABASE_URL + SUPABASE_SERVICE_KEY from .dev.vars, seeds the two
-// existing accounts (idempotent — skips if email already exists).
+// Usage: node scripts/seed-users.mjs <email> <password> <role> [<email> <password> <role> ...]
+// Reads SUPABASE_URL + SUPABASE_SERVICE_KEY from .dev.vars, seeds the given
+// accounts (idempotent — skips if email already exists). Roles: admin|editor|viewer.
 import { readFileSync } from 'node:fs';
 
 const ITERATIONS = 100_000, KEY_LEN = 32;
@@ -23,15 +23,25 @@ function readDevVars() {
   return out;
 }
 
+const [, , ...args] = process.argv;
+if (args.length === 0 || args.length % 3 !== 0) {
+  console.error('Usage: node scripts/seed-users.mjs <email> <password> <role> [...]\nRoles: admin | editor | viewer');
+  process.exit(1);
+}
+const accounts = [];
+for (let i = 0; i < args.length; i += 3) {
+  const [email, password, role] = [args[i], args[i + 1], args[i + 2]];
+  if (!email.includes('@') || password.length < 8 || !['admin', 'editor', 'viewer'].includes(role)) {
+    console.error(`Invalid account #${i / 3 + 1}: email must contain @, password >= 8 chars, role admin|editor|viewer`);
+    process.exit(1);
+  }
+  accounts.push({ email, password, role });
+}
+
 const env = readDevVars();
 const URL_ = env.SUPABASE_URL, KEY = env.SUPABASE_SERVICE_KEY;
 if (!URL_ || !KEY) { console.error('Missing SUPABASE_URL / SUPABASE_SERVICE_KEY in .dev.vars'); process.exit(1); }
 const H = { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' };
-
-const accounts = [
-  { email: 'admin@alfatihah.com', password: 'Support99', role: 'admin' },
-  { email: 'DB@alfatihah.com', password: 'QurbanJaya99', role: 'editor' },
-];
 
 for (const a of accounts) {
   const check = await fetch(`${URL_}/rest/v1/qurban_users?email=eq.${encodeURIComponent(a.email)}&select=id`, { headers: H });
