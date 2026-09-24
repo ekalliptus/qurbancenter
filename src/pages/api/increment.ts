@@ -87,7 +87,13 @@ export async function POST({ request }: APIContext) {
     const stateId = 'day-' + dayNum;
 
     // Try atomic increment (requires Supabase RPC function)
-    const atomic = await atomicIncrement(stateId, parts, delta);
+    let atomic = await atomicIncrement(stateId, parts, delta);
+    // RPC errors out when the row doesn't exist yet (no settings saved this
+    // day) — seed the default state once and retry so the first click works.
+    if (atomic && atomic.error === 'State not found') {
+      await saveDayState(dayNum, defaultDayState());
+      atomic = await atomicIncrement(stateId, parts, delta);
+    }
     if (atomic) {
       if (atomic.error) {
         return new Response(JSON.stringify({ error: atomic.error }), {
