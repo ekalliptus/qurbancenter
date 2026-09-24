@@ -14,27 +14,39 @@ function headers() {
 
 export async function findUserByEmail(email: string): Promise<(UserRow & { password_hash: string }) | null> {
   const { url } = cfg();
-  const res = await fetch(
-    `${url}/rest/v1/qurban_users?email=eq.${encodeURIComponent(email)}&active=eq.true&select=id,email,role,active,created_at,password_hash`,
-    { headers: headers() }
-  );
-  if (!res.ok) return null;
-  const rows = await res.json() as any[];
-  return rows.length ? rows[0] : null;
+  try {
+    const res = await fetch(
+      `${url}/rest/v1/qurban_users?email=eq.${encodeURIComponent(email)}&active=eq.true&select=id,email,role,active,created_at,password_hash`,
+      { headers: headers() }
+    );
+    if (!res.ok) return null;
+    const rows = await res.json() as any[];
+    return rows.length ? rows[0] : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function listUsers(): Promise<UserRow[]> {
   const { url } = cfg();
-  const res = await fetch(`${url}/rest/v1/qurban_users?select=id,email,role,active,created_at&order=created_at`, { headers: headers() });
-  if (!res.ok) return [];
-  return res.json() as Promise<UserRow[]>;
+  try {
+    const res = await fetch(`${url}/rest/v1/qurban_users?select=id,email,role,active,created_at&order=created_at`, { headers: headers() });
+    if (!res.ok) return [];
+    return res.json() as Promise<UserRow[]>;
+  } catch {
+    return [];
+  }
 }
 
 export async function countAdmins(): Promise<number> {
   const { url } = cfg();
-  const res = await fetch(`${url}/rest/v1/qurban_users?role=eq.admin&active=eq.true&select=id`, { headers: headers() });
-  if (!res.ok) return 0;
-  return (await res.json() as any[]).length;
+  try {
+    const res = await fetch(`${url}/rest/v1/qurban_users?role=eq.admin&active=eq.true&select=id`, { headers: headers() });
+    if (!res.ok) return 0;
+    return (await res.json() as any[]).length;
+  } catch {
+    return 0;
+  }
 }
 
 export async function createUser(email: string, password: string, role: Role): Promise<{ ok: boolean; error?: string }> {
@@ -92,26 +104,34 @@ export async function createSession(userId: string, role: Role): Promise<string 
   const { url } = cfg();
   const token = generateToken();
   const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-  const res = await fetch(`${url}/rest/v1/qurban_sessions`, {
-    method: 'POST',
-    headers: { ...headers(), Prefer: 'return=minimal' },
-    body: JSON.stringify({ token, user_id: userId, role, expires_at: expires }),
-  });
-  if (!res.ok) return null;
-  return token;
+  try {
+    const res = await fetch(`${url}/rest/v1/qurban_sessions`, {
+      method: 'POST',
+      headers: { ...headers(), Prefer: 'return=minimal' },
+      body: JSON.stringify({ token, user_id: userId, role, expires_at: expires }),
+    });
+    if (!res.ok) return null;
+    return token;
+  } catch {
+    return null;
+  }
 }
 
 export async function getSession(token: string): Promise<{ role: Role } | null> {
   if (!token) return null;
   const { url } = cfg();
   const nowIso = new Date().toISOString();
-  const res = await fetch(
-    `${url}/rest/v1/qurban_sessions?token=eq.${encodeURIComponent(token)}&expires_at=gt.${encodeURIComponent(nowIso)}&select=role`,
-    { headers: headers() }
-  );
-  if (!res.ok) return null;
-  const rows = await res.json() as any[];
-  return rows.length ? { role: rows[0].role } : null;
+  try {
+    const res = await fetch(
+      `${url}/rest/v1/qurban_sessions?token=eq.${encodeURIComponent(token)}&expires_at=gt.${encodeURIComponent(nowIso)}&select=role`,
+      { headers: headers() }
+    );
+    if (!res.ok) return null;
+    const rows = await res.json() as any[];
+    return rows.length ? { role: rows[0].role } : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function deleteSession(token: string): Promise<void> {

@@ -8,7 +8,7 @@ import { verifyPassword } from '../../lib/crypto';
 // timing can't be used to enumerate accounts.
 const DUMMY_HASH = 'MDEyMzQ1Njc4OWFiY2RlZg==:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=';
 
-// ponytail: per-isolate in-memory limiter — Workers isolates don't share
+// caveat: per-isolate in-memory limiter — Workers isolates don't share
 // memory, so this blunts naive brute force only. Upgrade path: durable
 // limiter (Durable Object / WAF rule) if targeted attacks appear.
 const MAX_ATTEMPTS = 5;
