@@ -7,7 +7,8 @@
     "build": "astro build",
     "preview": "bun run build && wrangler dev",
     "deploy": "bun run build && wrangler deploy",
-    "cf-typegen": "wrangler types"
+    "cf-typegen": "wrangler types",
+    "test": "bun test"
   },
   "dependencies": {
     "@astrojs/cloudflare": "13.6.1",
