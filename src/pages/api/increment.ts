@@ -66,7 +66,9 @@ function setNestedValue(obj: any, path: string[], value: any) {
 export async function POST({ request }: APIContext) {
   try {
     const { day, path, delta } = await request.json();
-    if (!day || !path || typeof delta !== 'number') {
+    // Number.isInteger rejects NaN/Infinity/floats before the RPC cast to int4
+    // can fail and push us into the non-atomic fallback with a corrupt value.
+    if (!day || !path || !Number.isInteger(delta) || Math.abs(delta) > 1000) {
       return new Response(JSON.stringify({ error: 'Invalid params' }), {
         status: 400, headers: { 'Content-Type': 'application/json' },
       });
