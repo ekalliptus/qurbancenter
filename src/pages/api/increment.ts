@@ -1,5 +1,5 @@
 import type { APIContext } from 'astro';
-import { getDayState, saveDayState, defaultDayState, atomicIncrement, supaBroadcast } from '../../lib/db';
+import { getDayState, saveDayState, defaultDayState, atomicIncrement } from '../../lib/db';
 
 const VALID_PATHS = new Set([
   'totalHewan',
@@ -102,7 +102,6 @@ export async function POST({ request }: APIContext) {
           status: 400, headers: { 'Content-Type': 'application/json' },
         });
       }
-      await supaBroadcast(stateId);
       return new Response(JSON.stringify(atomic), {
         headers: { 'Content-Type': 'application/json' },
       });
@@ -133,7 +132,6 @@ export async function POST({ request }: APIContext) {
 
     setNestedValue(state, parts, newVal);
     await saveDayState(dayNum, state);
-    await supaBroadcast(stateId);
 
     return new Response(JSON.stringify({ ok: true, value: newVal }), {
       headers: { 'Content-Type': 'application/json' },

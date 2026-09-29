@@ -1,0 +1,18 @@
+import { readFileSync } from 'node:fs';
+import { neon } from '@neondatabase/serverless';
+const url = readFileSync('.dev.vars', 'utf8').match(/^DATABASE_URL=(.*)$/m)[1];
+const sql = neon(url);
+await sql`delete from qurban_state where id = 'smoke'`;
+const seed = { totalHewan: 3, kandang: [{ no: 1, keluar: 0 }, { no: 2, keluar: 0 }], karkas: { total: 0 }, cfg: { a: 1, nested: { x: 1 } } };
+await sql`insert into qurban_state (id, data) values ('smoke', ${JSON.stringify(seed)}::jsonb)`;
+const r1 = (await sql`select atomic_update_field('smoke', ${JSON.stringify(['karkas', 'total'])}::jsonb, 2) as r`)[0].r;
+const r2 = (await sql`select atomic_update_field('smoke', ${JSON.stringify(['kandang', '0', 'keluar'])}::jsonb, 5) as r`)[0].r;
+const patch = { cfg: { nested: { x: 9, y: 2 }, extra: true }, kandang: [{ no: 9 }] };
+const m = (await sql`select jsonb_merge_deep(data, ${JSON.stringify(patch)}::jsonb) as m from qurban_state where id='smoke'`)[0].m;
+const lim0 = (await sql`select login_is_limited('k1') as a`)[0].a;
+for (let i = 0; i < 5; i++) await sql`select login_record_failure('k1')`;
+const lim5 = (await sql`select login_is_limited('k1') as a`)[0].a;
+await sql`select login_clear('k1')`;
+const limC = (await sql`select login_is_limited('k1') as a`)[0].a;
+await sql`delete from qurban_state where id = 'smoke'`;
+console.log(JSON.stringify({ r1, r2, merge: m, lim0, lim5, limC }, null, 1));

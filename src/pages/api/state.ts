@@ -1,20 +1,5 @@
 import type { APIContext } from 'astro';
-import { getState, saveState, defaultState, supaBroadcast } from '../../lib/db';
-
-function deepMerge(target: any, source: any): any {
-  if (source === null || source === undefined) return target;
-  if (Array.isArray(source)) return source;
-  if (typeof source !== 'object') return source;
-  const result = Array.isArray(target) ? [...target] : { ...target };
-  for (const key of Object.keys(source)) {
-    if (source[key] !== null && typeof source[key] === 'object' && !Array.isArray(source[key]) && target && typeof target[key] === 'object' && !Array.isArray(target[key])) {
-      result[key] = deepMerge(target[key], source[key]);
-    } else {
-      result[key] = source[key];
-    }
-  }
-  return result;
-}
+import { getState, saveState, defaultState, mergeState } from '../../lib/db';
 
 export async function GET() {
   try {
@@ -39,10 +24,7 @@ export async function PATCH({ request }: APIContext) {
         headers: { 'Content-Type': 'application/json' },
       });
     }
-    const existing = await getState() || defaultState();
-    const merged = deepMerge(existing as any, body as any);
-    await saveState(merged);
-    await supaBroadcast('default');
+    await mergeState('default', defaultState(), body);
     return new Response(JSON.stringify({ ok: true }), {
       headers: { 'Content-Type': 'application/json' },
     });

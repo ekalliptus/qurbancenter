@@ -1,5 +1,6 @@
 import type { APIContext } from 'astro';
 import { listUsers, createUser, updateUser, deleteUser, countAdmins } from '../../lib/users';
+import { logActivity } from '../../lib/db';
 import type { Role } from '../../lib/users';
 
 function adminOnly(locals: App.Locals) {
@@ -22,6 +23,7 @@ export async function POST({ request, locals }: APIContext) {
   if (!email || !email.includes('@') || !password || !role || !VALID_ROLES.includes(role)) return json({ error: 'Data tidak lengkap' }, 400);
   if (password.length < 8) return json({ error: 'Password minimal 8 karakter' }, 400);
   const r = await createUser(email, password, role);
+  if (r.ok) await logActivity(locals.email, 'user.create', email);
   return r.ok ? json({ ok: true }) : json({ error: r.error }, 400);
 }
 
@@ -44,6 +46,7 @@ export async function PATCH({ request, locals }: APIContext) {
     }
   }
   const r = await updateUser(id, { password, role, active });
+  if (r.ok) await logActivity(locals.email, 'user.update', id);
   return r.ok ? json({ ok: true }) : json({ error: r.error }, 400);
 }
 
@@ -62,6 +65,7 @@ export async function DELETE({ request, locals }: APIContext) {
     }
   }
   const r = await deleteUser(id);
+  if (r.ok) await logActivity(locals.email, 'user.delete', id);
   return r.ok ? json({ ok: true }) : json({ error: r.error }, 400);
 }
 

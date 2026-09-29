@@ -1,50 +1,16 @@
+import { neon } from '@neondatabase/serverless';
 import { getEnv } from './env';
 
-// Secrets read at request time from the Cloudflare Workers runtime env.
-// Uses the service_role key: qurban_state is RLS-locked, so the anon key
-// (browser-visible) can no longer read/write it. Server access goes here.
-function supaConfig() {
-  return { url: getEnv('SUPABASE_URL'), key: getEnv('SUPABASE_SERVICE_KEY') };
+// Postgres access via the Neon HTTP driver: every call is a single
+// parameterized statement over HTTPS (Workers-friendly, no sockets held).
+let _sql: ReturnType<typeof neon> | null = null;
+function sql() {
+  if (!_sql) _sql = neon(getEnv('DATABASE_URL'));
+  return _sql;
 }
 
-async function supaGet(id: string) {
-  const { url, key } = supaConfig();
-  const res = await fetch(
-    `${url}/rest/v1/qurban_state?id=eq.${encodeURIComponent(id)}&select=data`,
-    { headers: { apikey: key, Authorization: `Bearer ${key}` } }
-  );
-  if (!res.ok) return null;
-  const rows = await res.json();
-  return rows.length > 0 ? rows[0].data : null;
-}
-
-async function supaUpsert(id: string, data: unknown) {
-  const { url, key } = supaConfig();
-  const body = JSON.stringify({ id, data, updated_at: new Date().toISOString() });
-  const res = await fetch(`${url}/rest/v1/qurban_state`, {
-    method: 'POST',
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'resolution=merge-duplicates,return=minimal',
-    },
-    body,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Supabase upsert failed (${res.status}): ${text}`);
-  }
-}
-
-async function supaSelect(filter: string) {
-  const { url, key } = supaConfig();
-  const res = await fetch(
-    `${url}/rest/v1/qurban_state?${filter}&select=id,data&order=id`,
-    { headers: { apikey: key, Authorization: `Bearer ${key}` } }
-  );
-  if (!res.ok) return [];
-  return res.json();
+function jsonb(value: unknown): string {
+  return JSON.stringify(value);
 }
 
 // --- State functions ---
@@ -76,10 +42,21 @@ export function defaultState() {
   };
 }
 
-export async function getState() { return supaGet('default'); }
-export async function getSettings() { return supaGet('settings'); }
-export async function saveSettings(data: unknown) { await supaUpsert('settings', data); }
-export async function saveState(data: unknown) { await supaUpsert('default', data); }
+async function stateGet(id: string): Promise<unknown | null> {
+  const rows = await sql()`select data from qurban_state where id = ${id}`;
+  return rows.length ? rows[0].data : null;
+}
+
+async function stateReplace(id: string, data: unknown): Promise<void> {
+  await sql()`insert into qurban_state (id, data, updated_at)
+    values (${id}, ${jsonb(data)}::jsonb, now())
+    on conflict (id) do update set data = ${jsonb(data)}::jsonb, updated_at = now()`;
+}
+
+export async function getState() { return stateGet('default'); }
+export async function getSettings() { return stateGet('settings'); }
+export async function saveSettings(data: unknown) { await stateReplace('settings', data); }
+export async function saveState(data: unknown) { await stateReplace('default', data); }
 export async function resetState() { const d = defaultState(); await saveState(d); return d; }
 
 export function defaultDay2State() {
@@ -93,11 +70,11 @@ export function defaultDay2State() {
   };
 }
 
-export async function getDay2State() { return supaGet('day2'); }
-export async function saveDay2State(data: unknown) { await supaUpsert('day2', data); }
+export async function getDay2State() { return stateGet('day2'); }
+export async function saveDay2State(data: unknown) { await stateReplace('day2', data); }
 export async function resetDay2State() { const d = defaultDay2State(); await saveDay2State(d); return d; }
-export async function getDay2Settings() { return supaGet('day2-settings'); }
-export async function saveDay2Settings(data: unknown) { await supaUpsert('day2-settings', data); }
+export async function getDay2Settings() { return stateGet('day2-settings'); }
+export async function saveDay2Settings(data: unknown) { await stateReplace('day2-settings', data); }
 
 // --- Generic multi-day state functions ---
 
@@ -133,65 +110,55 @@ export function defaultDayState() {
 }
 
 export async function getDayState(day: number) {
-  return supaGet('day-' + day);
+  return stateGet('day-' + day);
 }
 
 export async function saveDayState(day: number, data: unknown) {
-  await supaUpsert('day-' + day, data);
+  await stateReplace('day-' + day, data);
 }
 
 export async function getAllDayStates() {
-  const rows = await supaSelect('id=like.day-*');
-  const states: Record<string, any> = {};
+  const rows = await sql()`select id, data from qurban_state where id like ${'day-%'} order by id`;
+  const states: Record<string, unknown> = {};
   for (const row of rows) {
-    const num = row.id.replace('day-', '');
-    states[num] = row.data;
+    states[row.id.replace('day-', '')] = row.data;
   }
   return states;
 }
 
-export async function getGlobalSettings() { return supaGet('global-settings'); }
-export async function saveGlobalSettings(data: unknown) { await supaUpsert('global-settings', data); }
+export async function getGlobalSettings() { return stateGet('global-settings'); }
+export async function saveGlobalSettings(data: unknown) { await stateReplace('global-settings', data); }
 
-export async function supaBroadcast(key: string) {
+// Atomic deep-merge upsert: the read and the merge happen inside ONE
+// statement, so concurrent PATCHes can no longer lose updates (the old
+// read-modify-write in JS could). Absent rows merge against the app default.
+export async function mergeState(id: string, defaultData: unknown, patch: unknown): Promise<void> {
+  await sql()`insert into qurban_state (id, data, updated_at)
+    values (${id}, jsonb_merge_deep(${jsonb(defaultData)}::jsonb, ${jsonb(patch)}::jsonb), now())
+    on conflict (id) do update
+      set data = jsonb_merge_deep(qurban_state.data, ${jsonb(patch)}::jsonb), updated_at = now()`;
+}
+
+// Cheap change token for client polling.
+export async function getDbVersion(): Promise<string> {
+  const rows = await sql()`select coalesce(max(updated_at)::text, '') as v from qurban_state`;
+  return rows[0].v;
+}
+
+export async function logActivity(actor: string, action: string, detail: string): Promise<void> {
   try {
-    const { url, key: apiKey } = supaConfig();
-    await fetch(`${url}/realtime/v1/api/broadcast`, {
-      method: 'POST',
-      headers: {
-        'apikey': apiKey,
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        messages: [{
-          topic: 'qurban-sync',
-          event: 'state-changed',
-          payload: { key, ts: Date.now() },
-        }],
-      }),
-    });
-  } catch (e) {
-    console.error('Broadcast failed:', e);
+    await sql()`insert into activity_logs (actor, action, detail) values (${actor}, ${action}, ${detail})`;
+  } catch {
+    // logging must never break the main flow
   }
 }
 
-// --- Atomic increment (requires Supabase RPC function) ---
+// --- Atomic increment (RPC in neon/schema.sql) ---
 
 export async function atomicIncrement(id: string, path: string[], delta: number): Promise<{ ok?: boolean; value?: number; capped?: boolean; error?: string } | null> {
   try {
-    const { url, key } = supaConfig();
-    const res = await fetch(`${url}/rest/v1/rpc/atomic_update_field`, {
-      method: 'POST',
-      headers: {
-        apikey: key,
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ p_id: id, p_path: path, p_delta: delta }),
-    });
-    if (!res.ok) return null;
-    return res.json();
+    const rows = await sql()`select atomic_update_field(${id}, ${jsonb(path)}::jsonb, ${delta}) as r`;
+    return rows.length ? rows[0].r : null;
   } catch {
     return null;
   }

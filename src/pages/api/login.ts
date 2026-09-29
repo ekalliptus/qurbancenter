@@ -1,32 +1,13 @@
 import type { APIContext } from 'astro';
 import { VIEWER_TOKEN, COOKIE_NAME } from '../../lib/auth';
-import { findUserByEmail, createSession, deleteSession } from '../../lib/users';
+import { findUserByEmail, createSession, deleteSession, loginIsLimited, loginRecordFailure, loginClear } from '../../lib/users';
+import { logActivity } from '../../lib/db';
 import { verifyPassword } from '../../lib/crypto';
 
 // Valid-format hash of a throwaway value: verifying against it burns the same
 // PBKDF2 time as a real lookup when the email doesn't exist, so response
 // timing can't be used to enumerate accounts.
 const DUMMY_HASH = 'MDEyMzQ1Njc4OWFiY2RlZg==:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=';
-
-// caveat: per-isolate in-memory limiter — Workers isolates don't share
-// memory, so this blunts naive brute force only. Upgrade path: durable
-// limiter (Durable Object / WAF rule) if targeted attacks appear.
-const MAX_ATTEMPTS = 5;
-const WINDOW_MS = 10 * 60 * 1000;
-const attempts = new Map<string, { count: number; resetAt: number }>();
-
-function rateLimited(key: string): boolean {
-  const entry = attempts.get(key);
-  return !!entry && entry.count >= MAX_ATTEMPTS && Date.now() < entry.resetAt;
-}
-
-function recordFailure(key: string) {
-  const now = Date.now();
-  if (attempts.size > 500) for (const [k, v] of attempts) if (now >= v.resetAt) attempts.delete(k);
-  const entry = attempts.get(key);
-  if (!entry || now >= entry.resetAt) attempts.set(key, { count: 1, resetAt: now + WINDOW_MS });
-  else entry.count += 1;
-}
 
 export async function POST({ request }: APIContext) {
   const secure = request.url.startsWith('https');
@@ -54,8 +35,9 @@ export async function POST({ request }: APIContext) {
   });
 
   if (!email || !password) return fail();
-  const limiterKey = (request.headers.get('cf-connecting-ip') ?? 'unknown') + ':' + email.toLowerCase();
-  if (rateLimited(limiterKey)) {
+  const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
+  const limiterKey = ip + ':' + email.toLowerCase();
+  if (await loginIsLimited(limiterKey)) {
     return new Response(JSON.stringify({ error: 'Terlalu banyak percobaan. Coba lagi nanti.' }), {
       status: 429, headers: { 'Content-Type': 'application/json' },
     });
@@ -64,17 +46,18 @@ export async function POST({ request }: APIContext) {
   const user = await findUserByEmail(email);
   const ok = await verifyPassword(password, user ? user.password_hash : DUMMY_HASH);
   if (!user || !ok) {
-    recordFailure(limiterKey);
+    await loginRecordFailure(limiterKey);
     return fail();
   }
-  attempts.delete(limiterKey);
+  await loginClear(limiterKey);
 
-  const token = await createSession(user.id, user.role);
+  const token = await createSession(user.id, user.role, user.email);
   if (!token) {
     return new Response(JSON.stringify({ error: 'Gagal membuat sesi' }), {
       status: 500, headers: { 'Content-Type': 'application/json' },
     });
   }
+  await logActivity(user.email, 'login', ip);
   return new Response(JSON.stringify({ ok: true, role: user.role }), {
     headers: { 'Content-Type': 'application/json', 'Set-Cookie': `${COOKIE_NAME}=${token}; ${cookieOpts}` },
   });

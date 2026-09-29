@@ -30,16 +30,20 @@ function applySecurityHeaders(res: Response, pathname: string): Response {
 export const onRequest = defineMiddleware(async (context, next) => {
   const { pathname } = context.url;
 
-  if (pathname === '/login' || pathname === '/api/login' || pathname === '/api/public-state' || pathname === '/api/health') {
+  if (pathname === '/login' || pathname === '/api/login' || pathname === '/api/public-state' || pathname === '/api/health' || pathname === '/api/version') {
     return applySecurityHeaders(await next(), pathname);
   }
 
   const token = context.cookies.get(COOKIE_NAME)?.value;
   let role: 'admin' | 'editor' | 'viewer' | null = null;
+  let email = 'viewer';
   if (token === VIEWER_TOKEN) role = 'viewer';
   else if (token) {
     const session = await getSession(token);
-    role = session ? session.role : null;
+    if (session) {
+      role = session.role;
+      email = session.email;
+    }
   }
 
   if (!role) return applySecurityHeaders(context.redirect('/login'), pathname);
@@ -61,5 +65,6 @@ export const onRequest = defineMiddleware(async (context, next) => {
   }
 
   context.locals.role = role;
+  context.locals.email = email;
   return applySecurityHeaders(await next(), pathname);
 });

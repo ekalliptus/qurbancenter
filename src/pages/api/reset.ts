@@ -1,5 +1,5 @@
 import type { APIContext } from 'astro';
-import { resetState } from '../../lib/db';
+import { resetState, logActivity } from '../../lib/db';
 
 export async function POST({ locals }: APIContext) {
   if (locals.role !== 'admin') {
@@ -9,6 +9,7 @@ export async function POST({ locals }: APIContext) {
   }
   try {
     const data = await resetState();
+    await logActivity(locals.email, 'state.reset', 'default');
     return new Response(JSON.stringify(data), {
       headers: { 'Content-Type': 'application/json' },
     });

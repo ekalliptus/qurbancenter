@@ -1,20 +1,5 @@
 import type { APIContext } from 'astro';
-import { getDayState, saveDayState, getAllDayStates, defaultDayState, supaBroadcast } from '../../lib/db';
-
-function deepMerge(target: any, source: any): any {
-  if (source === null || source === undefined) return target;
-  if (Array.isArray(source)) return source;
-  if (typeof source !== 'object') return source;
-  const result = Array.isArray(target) ? [...target] : { ...target };
-  for (const key of Object.keys(source)) {
-    if (source[key] !== null && typeof source[key] === 'object' && !Array.isArray(source[key]) && target && typeof target[key] === 'object' && !Array.isArray(target[key])) {
-      result[key] = deepMerge(target[key], source[key]);
-    } else {
-      result[key] = source[key];
-    }
-  }
-  return result;
-}
+import { getDayState, getAllDayStates, defaultDayState, mergeState } from '../../lib/db';
 
 export async function GET({ url }: APIContext) {
   try {
@@ -63,11 +48,8 @@ export async function PATCH({ request, url }: APIContext) {
         headers: { 'Content-Type': 'application/json' },
       });
     }
-    // Deep merge: read current state, merge incoming on top, save result
-    const existing = await getDayState(day) || defaultDayState();
-    const merged = deepMerge(existing as any, body as any);
-    await saveDayState(day, merged);
-    await supaBroadcast('day-' + day);
+    // Atomic in-database merge — concurrent PATCHes no longer race.
+    await mergeState('day-' + day, defaultDayState(), body);
     return new Response(JSON.stringify({ ok: true }), {
       headers: { 'Content-Type': 'application/json' },
     });
