@@ -46,12 +46,22 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
   }
 
-  if (!role) return applySecurityHeaders(context.redirect('/login'), pathname);
+  // Short-circuit responses below bypass the route handler, leaving the
+  // request body unread — the next request on the keep-alive connection then
+  // desyncs on the leftover bytes (observed as 20s+ stalls in local workerd).
+  // Drain the body before replying.
+  const drain = () => context.request.arrayBuffer().catch(() => {});
+
+  if (!role) {
+    await drain();
+    return applySecurityHeaders(context.redirect('/login'), pathname);
+  }
 
   if (context.request.method !== 'GET') {
     const origin = context.request.headers.get('origin');
     const host = context.url.origin;
     if (origin && origin !== host) {
+      await drain();
       return applySecurityHeaders(new Response(JSON.stringify({ error: 'CSRF rejected' }), {
         status: 403, headers: { 'Content-Type': 'application/json' },
       }), pathname);
@@ -59,6 +69,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   }
 
   if (role === 'viewer' && pathname.startsWith('/api/') && context.request.method !== 'GET') {
+    await drain();
     return applySecurityHeaders(new Response(JSON.stringify({ error: 'Viewer tidak dapat mengubah data' }), {
       status: 403, headers: { 'Content-Type': 'application/json' },
     }), pathname);
