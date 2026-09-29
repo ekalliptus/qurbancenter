@@ -1,15 +1,12 @@
 ---
 import { COOKIE_NAME, VIEWER_TOKEN } from '../lib/auth';
 import { getSession } from '../lib/users';
-import { getEnv } from '../lib/env';
 const token = Astro.cookies.get(COOKIE_NAME)?.value;
 let role: 'admin' | 'editor' | 'viewer' = 'viewer';
 if (token && token !== VIEWER_TOKEN) {
   const session = await getSession(token);
   if (session) role = session.role;
 }
-const supabaseUrl = getEnv('SUPABASE_URL');
-const supabaseKey = getEnv('SUPABASE_KEY');
 ---
 <html lang="id">
 <head>
@@ -17,9 +14,7 @@ const supabaseKey = getEnv('SUPABASE_KEY');
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Qurban Command Center</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link href="https://fonts.googleapis.com/css2?family=Cabin:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Lato:wght@300;400;700&family=Lexend:wght@300;400;500;600;700&family=Montserrat:wght@300;400;500;600;700;800&family=Nunito:wght@300;400;500;600;700;800&family=Open+Sans:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600;700;800&family=Quicksand:wght@300;400;500;600;700&family=Raleway:wght@300;400;500;600;700;800&family=Roboto:wght@300;400;500;700&family=Rubik:wght@300;400;500;600;700&family=Source+Sans+3:wght@300;400;500;600;700&family=Ubuntu:wght@300;400;500;700&display=swap" rel="stylesheet" />
-  <script is:inline src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" integrity="sha384-EnyY0/GSHQGSxSgMwaIPzSESbqoOLSexfnSMN2AP+39Ckmn92stwABZynq1JyzdT" crossorigin="anonymous"></script>
-  <script is:inline src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.1/dist/umd/supabase.min.js" integrity="sha384-q36VSR1ktH2hgqgm+0LDeyqPW8CyZHSxfDSttSPm5ReOJzB+sYThmh7D4fE+jWTs" crossorigin="anonymous"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
 <style is:global>
 :root {
@@ -676,10 +671,6 @@ body[data-role="editor"] .admin-only{display:none!important}
   </div>
 </div>
 
-<script define:vars={{ supabaseUrl, supabaseKey }}>
-window.__SUPA_URL = supabaseUrl;
-window.__SUPA_KEY = supabaseKey;
-</script>
 <script is:inline>
 // ================================================================
 // ESCAPE HTML (XSS prevention)
@@ -2615,114 +2606,31 @@ function toggleDark() {
   queueSettingsSave();
 }
 
-// ================================================================
-// SUPABASE REALTIME
-// ================================================================
-var supabaseClient = null;
-var realtimeChannel = null;
-
-function initSupabaseRealtime() {
-  if (realtimeChannel) {
-    realtimeChannel.unsubscribe();
-    realtimeChannel = null;
-  }
-  if (typeof supabase === 'undefined' || !supabase.createClient) {
-    console.warn('[RT] Supabase JS not loaded, falling back to polling');
-    startPollingFallback();
-    return;
-  }
-  if (!supabaseClient) supabaseClient = supabase.createClient(window.__SUPA_URL, window.__SUPA_KEY);
-
-  var _broadcastTimers = {};
-  realtimeChannel = supabaseClient
-    .channel('qurban-sync')
-    .on('broadcast', {event: 'state-changed'}, function(msg) {
-      var key = msg.payload && msg.payload.key;
-      if (!key) return;
-
-      if (isSaving || pendingSave || saveTimeout) return;
-
-      if (_broadcastTimers[key]) clearTimeout(_broadcastTimers[key]);
-      _broadcastTimers[key] = setTimeout(function() {
-        delete _broadcastTimers[key];
-        console.log('[RT] Processing broadcast:', key);
-
-        markMonitorDirty();
-        if (key === 'global-settings') {
-          loadSettings().then(function() {
-            var shouldDark = !!settings.darkMode;
-            if (shouldDark !== document.body.classList.contains('dark')) document.body.classList.toggle('dark', shouldDark);
-            applyTheme(loadTheme());
-            if (settings.forceRefreshTs && settings.forceRefreshTs > lastKnownForceTs && lastKnownForceTs > 0) {
-              window.location.reload(); return;
-            }
-            lastKnownForceTs = settings.forceRefreshTs || 0;
-          });
-          return;
-        }
-
-        if (key.indexOf('day-') === 0) {
-          var dayNum = key.replace('day-', '');
-          if (dirtyDays[dayNum]) return;
-          fetch('/api/day-state?day=' + dayNum).then(function(r) { return r.json(); }).then(function(data) {
-            var result = migrateState(data || defaultDayState());
-            dayStates[dayNum] = result.state;
-            if (currentPage === 'pengaturan') return;
-            if (currentView === 'all') {
-              renderCurrentPage();
-            } else if (currentPage === 'input' && String(currentView) === String(dayNum)) {
-              var oldLokLen = (dayStates[dayNum] && dayStates[dayNum].distribusiKecil && dayStates[dayNum].distribusiKecil.lokasi) ? dayStates[dayNum].distribusiKecil.lokasi.length : 0;
-              var newLokLen = (result.state.distribusiKecil && result.state.distribusiKecil.lokasi) ? result.state.distribusiKecil.lokasi.length : 0;
-              dayStates[dayNum] = result.state;
-              if (oldLokLen !== newLokLen) { renderCurrentPage(); } else { syncInputDom(result.state); }
-            } else {
-              renderCurrentPage();
-            }
-          }).catch(function() {});
-          return;
-        }
-
-        if (key === 'settings' || key === 'day2-settings') {
-          loadSettings().then(function() { renderCurrentPage(); });
-          return;
-        }
-
-        loadAllStates().then(function() { renderCurrentPage(); });
-      }, 300);
-    })
-    .subscribe(function(status) {
-      console.log('[RT] Status:', status);
-      if (status === 'SUBSCRIBED') {
-        console.log('[RT] Broadcast channel connected');
-      }
-    });
-}
-
-// Fallback polling if Supabase JS fails to load
-function startPollingFallback() {
+function startAutoRefresh() {
   if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+  var lastVersion = null;
   autoRefreshInterval = setInterval(function() {
     if (currentPage === 'input' || currentPage === 'pengaturan') return;
     if (isSaving || pendingSave || saveTimeout) return;
-    loadAllStates().then(function() {
-      return loadSettings();
-    }).then(function() {
-      if (settings.forceRefreshTs && settings.forceRefreshTs > lastKnownForceTs && lastKnownForceTs > 0) {
-        window.location.reload(); return;
-      }
-      lastKnownForceTs = settings.forceRefreshTs || 0;
-      var shouldDark = !!settings.darkMode;
-      if (shouldDark !== document.body.classList.contains('dark')) document.body.classList.toggle('dark', shouldDark);
-      applyTheme(loadTheme());
-      markMonitorDirty();
-      renderCurrentPage();
-    });
-  }, 10000);
-}
-
-// Keep startAutoRefresh for backward compat but now uses realtime
-function startAutoRefresh() {
-  initSupabaseRealtime();
+    fetch('/api/version').then(function(r) { return r.json(); }).then(function(v) {
+      if (lastVersion === null) { lastVersion = v.v; return; }
+      if (v.v === lastVersion || !v.v) return;
+      lastVersion = v.v;
+      loadAllStates().then(function() {
+        return loadSettings();
+      }).then(function() {
+        if (settings.forceRefreshTs && settings.forceRefreshTs > lastKnownForceTs && lastKnownForceTs > 0) {
+          window.location.reload(); return;
+        }
+        lastKnownForceTs = settings.forceRefreshTs || 0;
+        var shouldDark = !!settings.darkMode;
+        if (shouldDark !== document.body.classList.contains('dark')) document.body.classList.toggle('dark', shouldDark);
+        applyTheme(loadTheme());
+        markMonitorDirty();
+        renderCurrentPage();
+      });
+    }).catch(function() {});
+  }, 4000);
 }
 
 function toggleAutoRefresh() {
@@ -2815,8 +2723,29 @@ function resetAllData() {
 // ================================================================
 // EXPORT EXCEL
 // ================================================================
+var _xlsxLoading = null;
+function ensureXLSX() {
+  if (typeof XLSX !== 'undefined') return Promise.resolve();
+  if (_xlsxLoading) return _xlsxLoading;
+  _xlsxLoading = new Promise(function(resolve, reject) {
+    var s = document.createElement('script');
+    s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+    s.integrity = 'sha384-EnyY0/GSHQGSxSgMwaIPzSESbqoOLSexfnSMN2AP+39Ckmn92stwABZynq1JyzdT';
+    s.crossOrigin = 'anonymous';
+    s.onload = resolve;
+    s.onerror = function() { _xlsxLoading = null; reject(new Error('load failed')); };
+    document.head.appendChild(s);
+  });
+  return _xlsxLoading;
+}
+
 function exportExcel() {
-  if (typeof XLSX === 'undefined') { toast('Library Excel tidak tersedia','error'); return; }
+  ensureXLSX().then(function() { exportExcelNow(); }).catch(function() {
+    toast('Library Excel tidak tersedia','error');
+  });
+}
+
+function exportExcelNow() {
   var wb = XLSX.utils.book_new();
 
   function styledSheet(data, cols) {
