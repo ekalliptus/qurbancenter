@@ -1,7 +1,8 @@
 // Usage: node scripts/seed-users.mjs <email> <password> <role> [<email> <password> <role> ...]
-// Reads SUPABASE_URL + SUPABASE_SERVICE_KEY from .dev.vars, seeds the given
-// accounts (idempotent — skips if email already exists). Roles: admin|editor|viewer.
+// Reads DATABASE_URL from .dev.vars, seeds the given accounts (idempotent —
+// skips if email already exists). Roles: admin|editor|viewer.
 import { readFileSync } from 'node:fs';
+import { neon } from '@neondatabase/serverless';
 
 const ITERATIONS = 100_000, KEY_LEN = 32;
 const enc = new TextEncoder();
@@ -38,19 +39,21 @@ for (let i = 0; i < args.length; i += 3) {
   accounts.push({ email, password, role });
 }
 
-const env = readDevVars();
-const URL_ = env.SUPABASE_URL, KEY = env.SUPABASE_SERVICE_KEY;
-if (!URL_ || !KEY) { console.error('Missing SUPABASE_URL / SUPABASE_SERVICE_KEY in .dev.vars'); process.exit(1); }
-const H = { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' };
+const { DATABASE_URL } = readDevVars();
+if (!DATABASE_URL || !DATABASE_URL.startsWith('postgresql')) {
+  console.error('Missing/invalid DATABASE_URL in .dev.vars');
+  process.exit(1);
+}
+const sql = neon(DATABASE_URL);
 
 for (const a of accounts) {
-  const check = await fetch(`${URL_}/rest/v1/qurban_users?email=eq.${encodeURIComponent(a.email)}&select=id`, { headers: H });
-  const existing = await check.json();
+  const existing = await sql`select id from qurban_users where email = ${a.email}`;
   if (existing.length) { console.log(`skip ${a.email} (exists)`); continue; }
   const password_hash = await hash(a.password);
-  const res = await fetch(`${URL_}/rest/v1/qurban_users`, {
-    method: 'POST', headers: { ...H, Prefer: 'return=minimal' },
-    body: JSON.stringify({ email: a.email, password_hash, role: a.role }),
-  });
-  console.log(`${a.email}: ${res.ok ? 'seeded' : 'FAILED ' + res.status}`);
+  try {
+    await sql`insert into qurban_users (email, password_hash, role) values (${a.email}, ${password_hash}, ${a.role})`;
+    console.log(`${a.email}: seeded`);
+  } catch (e) {
+    console.error(`${a.email}: FAILED ${e.message}`);
+  }
 }

@@ -8,8 +8,10 @@
 // with dozens of concurrent "users" on the same account, verify the atomic
 // RPC preserves every increment, then restore the day-4 state row.
 import { readFileSync } from 'node:fs';
+import http from 'node:http';
+import { neon } from '@neondatabase/serverless';
 
-const BASE = 'http://127.0.0.1:8787';
+const BASE = process.env.BRUTAL_BASE || 'http://127.0.0.1:8788';
 const results = [];
 
 function record(name, pass, detail = '') {
@@ -32,43 +34,62 @@ function readDevVars() {
 }
 
 const cfg = { ...readDevVars(), ...process.env };
-const hasService = !!cfg.SUPABASE_URL && !!cfg.SUPABASE_SERVICE_KEY && !cfg.SUPABASE_URL.includes('dummy');
-const sbH = () => ({ apikey: cfg.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${cfg.SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json' });
-const sbUrl = () => cfg.SUPABASE_URL.replace(/\/$/, '');
+const hasDb = !!cfg.DATABASE_URL && cfg.DATABASE_URL.startsWith('postgresql');
+const dbSql = hasDb ? neon(cfg.DATABASE_URL) : null;
 
-async function sbGetRow(id) {
-  const res = await fetch(`${sbUrl()}/rest/v1/qurban_state?id=eq.${id}&select=data`, { headers: sbH() });
-  const rows = await res.json();
+async function dbGetRow(id) {
+  const rows = await dbSql`select data from qurban_state where id = ${id}`;
   return rows.length ? rows[0].data : null;
 }
 
-async function sbUpsertRow(id, data) {
-  await fetch(`${sbUrl()}/rest/v1/qurban_state`, {
-    method: 'POST',
-    headers: { ...sbH(), Prefer: 'resolution=merge-duplicates,return=minimal' },
-    body: JSON.stringify({ id, data, updated_at: new Date().toISOString() }),
-  });
+async function dbUpsertRow(id, data) {
+  await dbSql`insert into qurban_state (id, data, updated_at)
+    values (${id}, ${JSON.stringify(data)}::jsonb, now())
+    on conflict (id) do update set data = ${JSON.stringify(data)}::jsonb, updated_at = now()`;
 }
 
-async function sbDeleteRow(id) {
-  await fetch(`${sbUrl()}/rest/v1/qurban_state?id=eq.${id}`, { method: 'DELETE', headers: sbH() });
+async function dbDeleteRow(id) {
+  await dbSql`delete from qurban_state where id = ${id}`;
 }
 
+// node:http with agent:false — bun fetch's connection pool stalls on workerd's
+// empty-body 302 keep-alive responses (Windows local dev), which fetch cannot
+// avoid since Connection is a forbidden header there.
 async function api(method, path, { body, cookie } = {}) {
-  const res = await fetch(BASE + path, {
-    method,
-    headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: `qurban_auth=${cookie}` } : {}) },
-    body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body),
-    redirect: 'manual',
+  return new Promise((resolve, reject) => {
+    const url = new URL(BASE + path);
+    const payload = body === undefined ? null : typeof body === 'string' ? body : JSON.stringify(body);
+    const req = http.request({
+      hostname: url.hostname,
+      port: url.port,
+      path: url.pathname + url.search,
+      method,
+      agent: false,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(payload !== null ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
+        ...(cookie ? { Cookie: `qurban_auth=${cookie}` } : {}),
+      },
+    }, (res) => {
+      let raw = '';
+      res.on('data', (c) => { raw += c; });
+      res.on('end', () => {
+        let json = null;
+        try { json = JSON.parse(raw); } catch {}
+        resolve({ status: res.statusCode, json, headers: res.headers });
+      });
+    });
+    req.setTimeout(120000, () => req.destroy(new Error('request timeout')));
+    req.on('error', reject);
+    if (payload !== null) req.write(payload);
+    req.end();
   });
-  let json = null;
-  try { json = await res.json(); } catch {}
-  return { status: res.status, json, headers: res.headers };
 }
 
 async function login(email, password) {
   const r = await api('POST', '/api/login', { body: { email, password } });
-  const m = (r.json && r.json.ok) ? /qurban_auth=([^;]+)/.exec(r.headers?.get('set-cookie') || '') : null;
+  const setCookie = r.headers['set-cookie']?.[0] || r.headers['set-cookie'] || '';
+  const m = r.json && r.json.ok ? /qurban_auth=([^;]+)/.exec(Array.isArray(setCookie) ? setCookie[0] : setCookie) : null;
   return { ...r, cookie: m ? m[1] : null };
 }
 
@@ -76,6 +97,7 @@ async function login(email, password) {
 
 async function phaseA() {
   console.log('\n── FASE A · endpoint publik & input hostile ──');
+  if (hasDb) await dbSql`delete from login_attempts`;
   let r = await api('GET', '/api/health');
   record('A1  health 200', r.status === 200 && r.json?.status === 'ok');
 
@@ -146,27 +168,27 @@ async function phaseB() {
     (await Promise.all(tokens.map(t => api('GET', '/api/day-state?day=4', { cookie: t })))).every(r => r.status === 200),
     `${tokens.length} token`);
 
-  await sbUpsertRow('day-4', testState(10));
+  await dbUpsertRow('day-4', testState(10));
   const res500 = await hammer(tokens[0], 20, 25, () => ({ day: 4, path: 'karkas.total', delta: 1 }));
   const ok500 = res500.filter(r => r.status === 200 && r.json?.ok === true).length;
-  const final500 = (await sbGetRow('day-4')).karkas.total;
+  const final500 = (await dbGetRow('day-4')).karkas.total;
   record('B1  500 increment (+1) tidak ada yang hilang', ok500 === 500 && final500 === 500,
     `ok ${ok500}/500, nilai akhir ${final500}`);
 
-  await sbUpsertRow('day-4', testState(10));
+  await dbUpsertRow('day-4', testState(10));
   const up = await hammer(tokens[0], 10, 10, () => ({ day: 4, path: 'cacahDariAbf', delta: 1 }));
   const down = await hammer(tokens[0], 10, 10, () => ({ day: 4, path: 'cacahDariAbf', delta: -1 }));
-  const mid = (await sbGetRow('day-4')).cacahDariAbf;
+  const mid = (await dbGetRow('day-4')).cacahDariAbf;
   const extraDown = await hammer(tokens[0], 10, 5, () => ({ day: 4, path: 'cacahDariAbf', delta: -1 }));
-  const end = (await sbGetRow('day-4')).cacahDariAbf;
+  const end = (await dbGetRow('day-4')).cacahDariAbf;
   record('B2  100 naik lalu 100 turun -> tepat 0',
     up.every(r => r.status === 200) && down.every(r => r.status === 200) && mid === 0, `tengah ${mid}`);
   record('B3  50 turun lagi saat nol -> semua capped, tetap 0',
     extraDown.every(r => r.json?.capped === true) && end === 0, `capped ${extraDown.filter(r => r.json?.capped).length}/50, akhir ${end}`);
 
-  await sbUpsertRow('day-4', testState(10));
+  await dbUpsertRow('day-4', testState(10));
   const resCap = await hammer(tokens[0], 50, 1, () => ({ day: 4, path: 'kandang.0.keluar', delta: 1 }));
-  const st = await sbGetRow('day-4');
+  const st = await dbGetRow('day-4');
   const sumKeluar = st.kandang.reduce((a, k) => a + (k.keluar || 0), 0);
   const capped = resCap.filter(r => r.json?.capped === true).length;
   record('B4  cap totalHewan=10 di bawah 50 klik serentak', sumKeluar === 10 && capped === 40 && st.kandang[0].keluar === 10,
@@ -193,11 +215,11 @@ async function phaseB() {
     if (rr.status !== 400) { allRejected = false; record(`C   ${name} -> 400`, false, `dapat ${rr.status}`); }
   }
   record('C   12 payload brutal ditolak 400', allRejected);
-  const clean = (await sbGetRow('day-4')).karkas.total;
+  const clean = (await dbGetRow('day-4')).karkas.total;
   record('C   state tak tersentuh setelah payload brutal', clean === 0, `karkas.total = ${clean}`);
 
-  console.log('\n── FASE D · PATCH storm (jalur deep-merge non-atomik) ──');
-  await sbUpsertRow('day-4', testState(10));
+  console.log('\n── FASE D · PATCH storm (merge atomik di SQL) ──');
+  await dbUpsertRow('day-4', testState(10));
   const sent = new Set();
   await Promise.all(Array.from({ length: 10 }, async (_, w) => {
     for (let j = 0; j < 5; j++) {
@@ -206,35 +228,36 @@ async function phaseB() {
       await api('PATCH', '/api/day-state?day=4', { cookie: tokens[0], body: { karkas: { total: v } } });
     }
   }));
-  const finalPatch = (await sbGetRow('day-4')).karkas.total;
-  record('D   PATCH storm: nilai akhir salah satu tulisan & tak korup', Number.isInteger(finalPatch) && sent.has(finalPatch),
-    `akhir ${finalPatch}; race lost-update di jalur ini BY DESIGN — pakai /api/increment untuk counter`);
+  const finalPatch = (await dbGetRow('day-4')).karkas.total;
+  record('D   PATCH storm: merge atomik, nilai akhir salah satu tulisan', Number.isInteger(finalPatch) && sent.has(finalPatch),
+    `akhir ${finalPatch}`);
 
   console.log('\n── FASE E · restore ──');
   const tokens2 = [...tokens];
-  await sbUpsertRow('day-4', testState(0));
-  await fetch(`${sbUrl()}/rest/v1/qurban_sessions?token=in.(${tokens2.map(t => `"${t}"`).join(',')})`, {
-    method: 'DELETE', headers: { ...sbH(), Prefer: 'return=minimal' },
-  }).catch(() => {});
+  await dbUpsertRow('day-4', testState(0));
+  try { await dbSql`delete from qurban_sessions where token = any(${tokens2})`; } catch {}
   record('E   sesi test dibersihkan, day-4 direset', true);
 }
 
 console.log(`Brutal test → ${BASE}`);
-await phaseA();
-if (!hasService) {
-  console.log('\nFASE B–E dilewati: butuh Supabase asli. Isi .dev.vars (SUPABASE_URL,');
-  console.log('SUPABASE_SERVICE_KEY, TEST_EMAIL, TEST_PASSWORD) lalu jalankan ulang.');
+try {
+  await phaseA();
+} catch (e) {
+  record('A   fase A selesai tanpa crash', false, e.message);
+}
+if (!hasDb) {
+  console.log('\nFASE B–E dilewati: butuh DATABASE_URL (Neon) di .dev.vars + TEST_EMAIL/TEST_PASSWORD.');
 } else {
   const main = await login(cfg.TEST_EMAIL, cfg.TEST_PASSWORD);
   if (!main.cookie) {
     console.log(`\nFASE B–E dilewati: login test account gagal (${main.status}).`);
   } else {
-    const backup = await sbGetRow('day-4');
+    const backup = await dbGetRow('day-4');
     try {
       await phaseB();
     } finally {
-      if (backup === null) await sbDeleteRow('day-4');
-      else if (backup.karkas) await sbUpsertRow('day-4', backup);
+      if (backup === null) await dbDeleteRow('day-4');
+      else if (backup.karkas) await dbUpsertRow('day-4', backup);
     }
     console.log('\nFASE E · backup day-4 dipulihkan.');
   }
