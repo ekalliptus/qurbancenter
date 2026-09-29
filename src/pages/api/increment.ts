@@ -73,8 +73,8 @@ export async function POST({ request }: APIContext) {
         status: 400, headers: { 'Content-Type': 'application/json' },
       });
     }
-    const dayNum = parseInt(day);
-    if (dayNum < 1 || dayNum > 4) {
+    const dayNum = Number(day);
+    if (!Number.isInteger(dayNum) || dayNum < 1 || dayNum > 4) {
       return new Response(JSON.stringify({ error: 'Invalid day' }), {
         status: 400, headers: { 'Content-Type': 'application/json' },
       });
