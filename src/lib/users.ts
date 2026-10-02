@@ -11,6 +11,15 @@ function sql() {
   return _sql;
 }
 
+// NeonDbError carries a Postgres error code; extract it from unknown catches.
+function dbErrorCode(e: unknown): string | undefined {
+  return typeof e === 'object' && e !== null && 'code' in e ? String((e as { code: unknown }).code) : undefined;
+}
+function dbErrorLabel(e: unknown): string {
+  const code = dbErrorCode(e);
+  return code ? `DB error ${code}` : 'DB error';
+}
+
 export async function findUserByEmail(email: string): Promise<(UserRow & { password_hash: string }) | null> {
   try {
     const rows = await sql()`select id, email, role, active, created_at, password_hash
@@ -43,9 +52,9 @@ export async function createUser(email: string, password: string, role: Role): P
   try {
     await sql()`insert into qurban_users (email, password_hash, role) values (${email}, ${password_hash}, ${role})`;
     return { ok: true };
-  } catch (e: any) {
-    if (e?.code === '23505') return { ok: false, error: 'Email sudah terdaftar' };
-    return { ok: false, error: `DB error ${e?.code ?? ''}`.trim() };
+  } catch (e) {
+    if (dbErrorCode(e) === '23505') return { ok: false, error: 'Email sudah terdaftar' };
+    return { ok: false, error: dbErrorLabel(e) };
   }
 }
 
@@ -61,8 +70,8 @@ export async function updateUser(id: string, patch: { password?: string; role?: 
     if (typeof patch.active === 'boolean') {
       await sql()`update qurban_users set active = ${patch.active} where id = ${id}`;
     }
-  } catch (e: any) {
-    return { ok: false, error: `DB error ${e?.code ?? ''}`.trim() };
+  } catch (e) {
+    return { ok: false, error: dbErrorLabel(e) };
   }
   // Revoke existing sessions when role/active changes — the session row holds a
   // denormalized role, so a live cookie would otherwise keep stale privileges
@@ -85,8 +94,8 @@ export async function deleteUser(id: string): Promise<{ ok: boolean; error?: str
   try {
     await sql()`delete from qurban_users where id = ${id}`;
     return { ok: true };
-  } catch (e: any) {
-    return { ok: false, error: `DB error ${e?.code ?? ''}`.trim() };
+  } catch (e) {
+    return { ok: false, error: dbErrorLabel(e) };
   }
 }
 

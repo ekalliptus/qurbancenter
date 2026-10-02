@@ -2,11 +2,11 @@
 //
 //   bun scripts/brutal-test.mjs
 //
-// Phase A needs nothing but a running server (dummy Supabase is fine).
-// Phases B-E need TEST_EMAIL/TEST_PASSWORD (one shared account) plus real
-// SUPABASE_URL/SUPABASE_SERVICE_KEY in .dev.vars: they hammer /api/increment
-// with dozens of concurrent "users" on the same account, verify the atomic
-// RPC preserves every increment, then restore the day-4 state row.
+// Phase A needs nothing but a running server (dummy DATABASE_URL is fine).
+// Phases B-E need TEST_EMAIL/TEST_PASSWORD (one shared account) plus a real
+// DATABASE_URL in .dev.vars: they hammer /api/increment with dozens of
+// concurrent "users" on the same account, verify the atomic RPC preserves
+// every increment, then restore the day-4 state row.
 import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import { neon } from '@neondatabase/serverless';

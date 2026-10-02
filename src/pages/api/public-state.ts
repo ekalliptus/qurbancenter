@@ -95,7 +95,7 @@ export async function GET({ url }: APIContext) {
     return new Response(JSON.stringify(flat), {
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     });
-  } catch (e: any) {
+  } catch (e) {
     console.error('GET /api/public-state error:', e);
     return new Response(JSON.stringify({ error: 'Terjadi kesalahan' }), {
       status: 500,

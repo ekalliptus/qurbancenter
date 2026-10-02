@@ -7,7 +7,7 @@ export async function GET() {
     return new Response(JSON.stringify(data || {}), {
       headers: { 'Content-Type': 'application/json' },
     });
-  } catch (e: any) {
+  } catch (e) {
     return new Response(JSON.stringify({}), {
       headers: { 'Content-Type': 'application/json' },
     });
@@ -32,7 +32,7 @@ export async function PATCH({ request, locals }: APIContext) {
     return new Response(JSON.stringify({ ok: true }), {
       headers: { 'Content-Type': 'application/json' },
     });
-  } catch (e: any) {
+  } catch (e) {
     return new Response(JSON.stringify({ error: e?.message || 'Save failed' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },

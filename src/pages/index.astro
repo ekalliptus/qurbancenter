@@ -774,12 +774,12 @@ function loadAllStates() {
   }).then(function(d) {
     if (d) {
       for (var i = 1; i <= 4; i++) {
-        if (dirtyDays[i]) { console.log('[LOAD] skip day='+i+' (dirty)'); continue; }
+        if (dirtyDays[i]) { continue; }
         var raw = d[String(i)] || defaultDayState();
         var result = migrateState(raw);
         dayStates[i] = result.state;
         var rk1 = result.state&&result.state.kandang?result.state.kandang[0].keluar:'-';
-        console.log('[LOAD] day='+i+' kandang1.keluar='+rk1);
+
       }
     } else {
       for (var i = 1; i <= 4; i++) if (!dayStates[i]) dayStates[i] = defaultDayState();
@@ -790,13 +790,13 @@ function loadAllStates() {
 }
 
 function saveDayState(day) {
-  if (isSaving) { pendingSave = day; console.log('[SAVE] queued day='+day+' (busy)'); return Promise.resolve(); }
+  if (isSaving) { pendingSave = day; return Promise.resolve(); }
   isSaving = true; showSaveIndicator(true);
   var snapshot = JSON.stringify(dayStates[day]);
   var k1val = dayStates[day]&&dayStates[day].kandang?dayStates[day].kandang[0].keluar:'-';
-  console.log('[SAVE] day='+day+' kandang1.keluar='+k1val+' size='+snapshot.length);
+
   return fetch('/api/day-state?day='+day, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:snapshot})
-    .then(function(r) { if(!r.ok) throw new Error('HTTP '+r.status); console.log('[SAVE] day='+day+' OK'); })
+    .then(function(r) { if(!r.ok) throw new Error('HTTP '+r.status); })
     .catch(function(e) { console.error('[SAVE] day='+day+' FAIL',e); })
     .then(function() {
       isSaving=false; showSaveIndicator(false);
@@ -2048,7 +2048,6 @@ function collectCurrentFormData() {
   // Cap: cacah no negative
   if (state.cacah) { for (var ci = 0; ci < state.cacah.length; ci++) state.cacah[ci].total = Math.max(0, state.cacah[ci].total || 0); }
 
-  console.log('[COLLECT] day='+currentView+' totalHewan='+state.totalHewan+' kandang1='+((state.kandang&&state.kandang[0])?state.kandang[0].keluar:'-'));
 }
 
 // ================================================================

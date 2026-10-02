@@ -1,5 +1,5 @@
 // Usage: node scripts/hash-password.mjs <password>
-// Prints "salt:hash" for manual inserts via the Supabase dashboard.
+// Prints "salt:hash" for manual inserts (psql or Neon SQL Editor).
 const ITERATIONS = 100_000, KEY_LEN = 32;
 const enc = new TextEncoder();
 const toB64 = (buf) => Buffer.from(new Uint8Array(buf)).toString('base64');

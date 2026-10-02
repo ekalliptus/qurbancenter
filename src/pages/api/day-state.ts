@@ -24,7 +24,7 @@ export async function GET({ url }: APIContext) {
     return new Response(JSON.stringify(data || defaultDayState()), {
       headers: { 'Content-Type': 'application/json' },
     });
-  } catch (e: any) {
+  } catch (e) {
     console.error('GET /api/day-state error:', e);
     return new Response(JSON.stringify(defaultDayState()), {
       headers: { 'Content-Type': 'application/json' },
@@ -53,7 +53,7 @@ export async function PATCH({ request, url }: APIContext) {
     return new Response(JSON.stringify({ ok: true }), {
       headers: { 'Content-Type': 'application/json' },
     });
-  } catch (e: any) {
+  } catch (e) {
     console.error('PATCH /api/day-state error:', e);
     return new Response(JSON.stringify({ error: e?.message || 'Save failed' }), {
       status: 500,

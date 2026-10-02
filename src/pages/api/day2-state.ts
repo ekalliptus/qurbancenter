@@ -7,7 +7,7 @@ export async function GET() {
     return new Response(JSON.stringify(data || defaultDay2State()), {
       headers: { 'Content-Type': 'application/json' },
     });
-  } catch (e: any) {
+  } catch (e) {
     console.error('GET /api/day2-state error:', e);
     return new Response(JSON.stringify(defaultDay2State()), {
       headers: { 'Content-Type': 'application/json' },
@@ -28,7 +28,7 @@ export async function PATCH({ request }: APIContext) {
     return new Response(JSON.stringify({ ok: true }), {
       headers: { 'Content-Type': 'application/json' },
     });
-  } catch (e: any) {
+  } catch (e) {
     console.error('PATCH /api/day2-state error:', e);
     return new Response(JSON.stringify({ error: e?.message || 'Save failed' }), {
       status: 500,
