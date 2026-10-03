@@ -18,7 +18,7 @@ Neon Postgres (state, akun, sesi, rate limit, activity log)
 - **Database**: Neon Postgres (`neon/schema.sql`). State aplikasi = satu tabel `qurban_state` (JSON per key). Inkrementan angka lewat RPC `atomic_update_field` (row-locked, anti lost-update); PATCH lewat `jsonb_merge_deep` (atomik di database, tanpa race).
 - **Auth**: cookie sesi (`qurban_sessions`, token acak 32 byte, expired 7 hari). Password PBKDF2-SHA256 100k iterasi. Role `admin`/`editor`/`viewer`; viewer read-only tanpa akun; perubahan role/nonaktif otomatis mencabut sesi aktif.
 - **Rate limit login**: durable di tabel `login_attempts` (5 kegagalan / 10 menit per IP+email), selamat lintas isolate & restart.
-- **Sinkronisasi**: klien polling ringan `/api/version` (timestamp max `updated_at`) tiap 4 detik — refresh penuh hanya saat data berubah. Tidak ada WebSocket/CDN realtime.
+- **Sinkronisasi**: klien polling ringan `/api/version` (timestamp max `updated_at`) tiap 4 detik, refresh penuh hanya saat data berubah. Tidak ada WebSocket/CDN realtime.
 - **Export Excel**: xlsx 0.20.3 lazy-load saat tombol export diklik (bukan di load awal).
 - **Anti-slop PR**: workflow `.github/workflows/pr-quality.yaml` menutup otomatis PR berkualitas rendah (exempt owner/member).
 
@@ -56,7 +56,7 @@ scripts/             neon-setup.mjs, seed-users.mjs, hash-password.mjs,
    | Var | Isi | Boleh ke browser? |
    |---|---|---|
    | `DATABASE_URL` | pooled connection string Neon | **jangan** |
-   | `PUBLIC_API_KEY` | API key untuk `/api/public-state` | — |
+   | `PUBLIC_API_KEY` | API key untuk `/api/public-state` | n/a |
 
    Ambil `DATABASE_URL`: `npx neon connection-string --project-id <id> --pooled` (atau Neon Console → Connection Details).
 
